@@ -62,32 +62,8 @@ Save the following as:
 
 
 
-<#
-.SYNOPSIS
-  Enforce DISA STIG WN10-SO-000150 on Windows 10/11 members.
-
-.DESCRIPTION
-  Sets HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\RestrictAnonymous = 1
-  (Network access: Do not allow anonymous enumeration of SAM accounts and shares).
-
-  Creates a backup of the prior value at:
-    HKLM:\SOFTWARE\TitanConsultancy\STIGBackups\WN10-SO-000150
-
-.PARAMETER Enforce
-  Apply required setting.
-
-.PARAMETER Rollback
-  Restore previously backed-up value (if present).
-
-.PARAMETER CheckOnly
-  Report compliant/noncompliant and exit code (0 = compliant).
-
-.EXAMPLE
-  .\Set-WN10-SO-000150.ps1 -CheckOnly
-  .\Set-WN10-SO-000150.ps1 -Enforce
-  .\Set-WN10-SO-000150.ps1 -Rollback
-#>
-
+# Set-WN10-SO-000150.ps1  (PS 5.1 compatible)
+# Enforce DISA STIG WN10-SO-000150 (RestrictAnonymous = 1)
 [CmdletBinding(SupportsShouldProcess)]
 param(
   [switch]$Enforce,
@@ -97,26 +73,29 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$KeyPath      = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa'
-$ValueName    = 'RestrictAnonymous'
-$RequiredDword= 1
-$BackupKey    = 'HKLM:\SOFTWARE\TitanConsultancy\STIGBackups\WN10-SO-000150'
-$BackupName   = 'PreviousValue'
-$TimeName     = 'BackupTimestamp'
+$KeyPath       = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa'
+$ValueName     = 'RestrictAnonymous'
+$RequiredDword = 1
+$BackupKey     = 'HKLM:\SOFTWARE\TitanConsultancy\STIGBackups\WN10-SO-000150'
+$BackupName    = 'PreviousValue'
+$TimeName      = 'BackupTimestamp'
 
 function Get-CurrentValue {
   try {
-    (Get-ItemProperty -Path $KeyPath -Name $ValueName -ErrorAction Stop).$ValueName
+    $item = Get-ItemProperty -Path $KeyPath -Name $ValueName -ErrorAction Stop
+    return [int]$item.$ValueName
   } catch {
-    $null
+    return $null
   }
 }
 
 function Backup-IfNeeded {
   if (-not (Test-Path $BackupKey)) { New-Item -Path $BackupKey -Force | Out-Null }
-  if (-not (Get-ItemProperty -Path $BackupKey -Name $BackupName -ErrorAction SilentlyContinue)) {
+  $bk = Get-ItemProperty -Path $BackupKey -Name $BackupName -ErrorAction SilentlyContinue
+  if ($null -eq $bk) {
     $cur = Get-CurrentValue
-    New-ItemProperty -Path $BackupKey -Name $BackupName -Value ([int]($cur ?? -1)) -PropertyType DWord -Force | Out-Null
+    $prevToStore = if ($null -eq $cur) { -1 } else { [int]$cur }
+    New-ItemProperty -Path $BackupKey -Name $BackupName -Value $prevToStore -PropertyType DWord -Force | Out-Null
     New-ItemProperty -Path $BackupKey -Name $TimeName  -Value (Get-Date).ToString('o') -PropertyType String -Force | Out-Null
   }
 }
@@ -129,27 +108,31 @@ function Set-Compliant {
 }
 
 function Restore-FromBackup {
-  if (Get-ItemProperty -Path $BackupKey -Name $BackupName -ErrorAction SilentlyContinue) {
-    $prev = (Get-ItemProperty -Path $BackupKey).$BackupName
+  $bk = Get-ItemProperty -Path $BackupKey -ErrorAction SilentlyContinue
+  if ($bk -and ($bk.PSObject.Properties.Name -contains $BackupName)) {
+    $prev = [int]$bk.$BackupName
     if ($prev -ge 0) {
       if (-not (Test-Path $KeyPath)) { New-Item -Path $KeyPath -Force | Out-Null }
       New-ItemProperty -Path $KeyPath -Name $ValueName -Value $prev -PropertyType DWord -Force | Out-Null
     } else {
       Remove-ItemProperty -Path $KeyPath -Name $ValueName -ErrorAction SilentlyContinue
     }
-    # keep the backup to preserve change history
   } else {
     Write-Warning "No backup found at $BackupKey"
   }
 }
 
-# -------- Main --------
+# ---- Main ----
 $cur = Get-CurrentValue
 $compliant = ($cur -eq $RequiredDword)
 
 if ($CheckOnly) {
   if ($compliant) { Write-Output "COMPLIANT: $ValueName=$cur"; exit 0 }
-  else { Write-Output "NONCOMPLIANT: $ValueName=$($cur ?? '<missing>')"; exit 1 }
+  else {
+    $display = if ($null -eq $cur) { '<missing>' } else { $cur }
+    Write-Output "NONCOMPLIANT: $ValueName=$display"
+    exit 1
+  }
 }
 
 if ($Enforce) {
@@ -162,12 +145,15 @@ if ($Enforce) {
 
 if ($Rollback) {
   Restore-FromBackup
-  Write-Output "Rollback attempted. Current $ValueName = $(Get-CurrentValue)"
+  $now = Get-CurrentValue
+  $displayNow = if ($null -eq $now) { '<missing>' } else { $now }
+  Write-Output "Rollback attempted. Current $ValueName = $displayNow"
   exit 0
 }
 
 Write-Output "No action specified. Use -CheckOnly, -Enforce, or -Rollback."
 exit 2
+
 
 
 
