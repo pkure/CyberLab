@@ -48,7 +48,20 @@ Save the following as:
 'Set-WN10-SO-000150.ps1'
 
 
-
+<# 
+.SYNOPSIS
+  This PowerShell script ensures that anonymous logon users (null session connections) are NOT allowed to list all account names and enumerate all shared resources can provide a map of potential points to attack the system.
+.NOTES
+  Author          : Peter Kure
+  LinkedIn        : linkedin.com/in/peter-kure
+  Github          : github.com/pkure
+  Date Created    : 8/16/2025
+  Last Modified   : 8/16/2025
+  Version         : 1.0
+  CVEs            : n/a
+  Plugin IDs      : n/a
+  STIG-ID         : WN10-SO-000150
+#>
 # Set-WN10-SO-000150.ps1  (PS 5.1 compatible)
 # Enforce DISA STIG WN10-SO-000150 (RestrictAnonymous = 1)
 [CmdletBinding(SupportsShouldProcess)]
