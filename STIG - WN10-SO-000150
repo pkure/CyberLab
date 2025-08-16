@@ -43,19 +43,6 @@ Powershell script to check and harden for above vulnerability (below pre-audit c
 
 
 
-
-Pre-audit check:
-In Powershell, run:
-
-.\Set-WN10-SO-000150.ps1 -CheckOnly
-
-(Expect: COMPLIANT or NONCOMPLIANT with current value.)
-
-
-
-
-
-
 Save the following as: 
 
 'Set-WN10-SO-000150.ps1'
@@ -158,6 +145,17 @@ exit 2
 
 
 ________________________________________________________________
+
+
+
+
+Pre-audit check:
+In Powershell, run:
+
+.\Set-WN10-SO-000150.ps1 -CheckOnly
+
+(Expect: COMPLIANT or NONCOMPLIANT with current value.)
+
 
 
 Remediate (local or via remote PowerShell/Intune/SCCM):
