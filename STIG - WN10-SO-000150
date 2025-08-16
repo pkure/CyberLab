@@ -1,0 +1,192 @@
+WN10-SO-000150
+
+Description
+Allowing anonymous logon users (null session connections) to list all account names and enumerate all shared resources can provide a map of potential points to attack the system.
+Solution
+Configure the policy value for Computer Configuration >> Windows Settings >> Security Settings >> Local Policies >> Security Options >> 'Network access: Do not allow anonymous enumeration of SAM accounts and shares' to 'Enabled'.
+
+Anonymous enumeration of shares must be restricted.
+STIG ID: WN10-SO-000150  |  SRG: SRG-OS-000138-GPOS-00069 |  Severity: high |  CCI: CCI-001090 |  Vulnerability Id: V-220930
+Vulnerability Discussion
+Allowing anonymous logon users (null session connections) to list all account names and enumerate all shared resources can provide a map of potential points to attack the system.
+Check
+If the following registry value does not exist or is not configured as specified, this is a finding:
+
+Registry Hive: HKEY_LOCAL_MACHINE
+Registry Path: \SYSTEM\CurrentControlSet\Control\Lsa\
+
+Value Name: RestrictAnonymous
+
+Value Type: REG_DWORD
+Value: 1
+Fix
+Configure the policy value for Computer Configuration >> Windows Settings >> Security Settings >> Local Policies >> Security Options >> "Network access: Do not allow anonymous enumeration of SAM accounts and shares" to "Enabled".
+
+
+_______________________________________________________________________
+
+The following PowerShell scripts are meant to harden the above vulnerability. 
+
+First, save the large main script using the name provided.
+
+Then use the command for pre-audit checks, to check if the Windows device is compliant/non-compliant.
+
+If non-compliant, perform remediation with the provided command.
+
+If rollback is needed, use the final provided command.
+
+
+_______________________________________________________________________
+
+
+Powershell script to check and harden for above vulnerability (below pre-audit checks):
+
+
+
+
+Pre-audit check:
+In Powershell, run:
+
+.\Set-WN10-SO-000150.ps1 -CheckOnly
+
+(Expect: COMPLIANT or NONCOMPLIANT with current value.)
+
+
+
+
+
+
+Save the following as: 
+
+'Set-WN10-SO-000150.ps1'
+
+
+
+<#
+.SYNOPSIS
+  Enforce DISA STIG WN10-SO-000150 on Windows 10/11 members.
+
+.DESCRIPTION
+  Sets HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\RestrictAnonymous = 1
+  (Network access: Do not allow anonymous enumeration of SAM accounts and shares).
+
+  Creates a backup of the prior value at:
+    HKLM:\SOFTWARE\TitanConsultancy\STIGBackups\WN10-SO-000150
+
+.PARAMETER Enforce
+  Apply required setting.
+
+.PARAMETER Rollback
+  Restore previously backed-up value (if present).
+
+.PARAMETER CheckOnly
+  Report compliant/noncompliant and exit code (0 = compliant).
+
+.EXAMPLE
+  .\Set-WN10-SO-000150.ps1 -CheckOnly
+  .\Set-WN10-SO-000150.ps1 -Enforce
+  .\Set-WN10-SO-000150.ps1 -Rollback
+#>
+
+[CmdletBinding(SupportsShouldProcess)]
+param(
+  [switch]$Enforce,
+  [switch]$Rollback,
+  [switch]$CheckOnly
+)
+
+$ErrorActionPreference = 'Stop'
+
+$KeyPath      = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa'
+$ValueName    = 'RestrictAnonymous'
+$RequiredDword= 1
+$BackupKey    = 'HKLM:\SOFTWARE\TitanConsultancy\STIGBackups\WN10-SO-000150'
+$BackupName   = 'PreviousValue'
+$TimeName     = 'BackupTimestamp'
+
+function Get-CurrentValue {
+  try {
+    (Get-ItemProperty -Path $KeyPath -Name $ValueName -ErrorAction Stop).$ValueName
+  } catch {
+    $null
+  }
+}
+
+function Backup-IfNeeded {
+  if (-not (Test-Path $BackupKey)) { New-Item -Path $BackupKey -Force | Out-Null }
+  if (-not (Get-ItemProperty -Path $BackupKey -Name $BackupName -ErrorAction SilentlyContinue)) {
+    $cur = Get-CurrentValue
+    New-ItemProperty -Path $BackupKey -Name $BackupName -Value ([int]($cur ?? -1)) -PropertyType DWord -Force | Out-Null
+    New-ItemProperty -Path $BackupKey -Name $TimeName  -Value (Get-Date).ToString('o') -PropertyType String -Force | Out-Null
+  }
+}
+
+function Set-Compliant {
+  if ($PSCmdlet.ShouldProcess("$KeyPath\$ValueName","Set to $RequiredDword")) {
+    if (-not (Test-Path $KeyPath)) { New-Item -Path $KeyPath -Force | Out-Null }
+    New-ItemProperty -Path $KeyPath -Name $ValueName -Value $RequiredDword -PropertyType DWord -Force | Out-Null
+  }
+}
+
+function Restore-FromBackup {
+  if (Get-ItemProperty -Path $BackupKey -Name $BackupName -ErrorAction SilentlyContinue) {
+    $prev = (Get-ItemProperty -Path $BackupKey).$BackupName
+    if ($prev -ge 0) {
+      if (-not (Test-Path $KeyPath)) { New-Item -Path $KeyPath -Force | Out-Null }
+      New-ItemProperty -Path $KeyPath -Name $ValueName -Value $prev -PropertyType DWord -Force | Out-Null
+    } else {
+      Remove-ItemProperty -Path $KeyPath -Name $ValueName -ErrorAction SilentlyContinue
+    }
+    # keep the backup to preserve change history
+  } else {
+    Write-Warning "No backup found at $BackupKey"
+  }
+}
+
+# -------- Main --------
+$cur = Get-CurrentValue
+$compliant = ($cur -eq $RequiredDword)
+
+if ($CheckOnly) {
+  if ($compliant) { Write-Output "COMPLIANT: $ValueName=$cur"; exit 0 }
+  else { Write-Output "NONCOMPLIANT: $ValueName=$($cur ?? '<missing>')"; exit 1 }
+}
+
+if ($Enforce) {
+  if ($compliant) { Write-Output "Already compliant ($ValueName=$cur)."; exit 0 }
+  Backup-IfNeeded
+  Set-Compliant
+  Write-Output "Enforced WN10-SO-000150. $ValueName set to $RequiredDword."
+  exit 0
+}
+
+if ($Rollback) {
+  Restore-FromBackup
+  Write-Output "Rollback attempted. Current $ValueName = $(Get-CurrentValue)"
+  exit 0
+}
+
+Write-Output "No action specified. Use -CheckOnly, -Enforce, or -Rollback."
+exit 2
+
+
+
+________________________________________________________________
+
+
+Remediate (local or via remote PowerShell/Intune/SCCM):
+
+.\Set-WN10-SO-000150.ps1 -Enforce
+
+
+Verify (local):
+
+Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' -Name RestrictAnonymous |
+  Select-Object RestrictAnonymous
+# should output 1
+
+
+
+Rollback, if needed:
+
+.\Set-WN10-SO-000150.ps1 -Rollback
