@@ -40,7 +40,7 @@ _______________________________________________________________________
 
 
 Powershell script to check and harden for above vulnerability (below pre-audit checks):
-
+(Made and debugged with love using ChatGPT)
 
 
 Save the following as: 
