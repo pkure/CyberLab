@@ -45,7 +45,7 @@ Here are the commands:
 Save this script as Set-WN10-CC-000327.ps1:
 
 
-# Set-WN10-CC-000327.ps1 (simple)
+# Set-WN10-CC-000327.ps1 (PowerShell 5.1 compatible)
 [CmdletBinding()]
 param(
   [switch]$Enforce,
@@ -58,14 +58,17 @@ param(
 $ErrorActionPreference = 'Stop'
 $Base = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription'
 $Bk   = 'HKLM:\SOFTWARE\TitanConsultancy\STIGBackups\WN10-CC-000327'
+$ReqName = 'EnableTranscripting'
+$InvName = 'EnableInvocationHeader'
+$OutName = 'OutputDirectory'
 
 function Get-State {
   if (Test-Path $Base) {
     $p = Get-ItemProperty -Path $Base -ErrorAction SilentlyContinue
     [pscustomobject]@{
-      EnableTranscripting   = $p.EnableTranscripting
-      EnableInvocationHeader= $p.EnableInvocationHeader
-      OutputDirectory       = $p.OutputDirectory
+      EnableTranscripting    = $p.$ReqName
+      EnableInvocationHeader = $p.$InvName
+      OutputDirectory        = $p.$OutName
     }
   }
 }
@@ -76,24 +79,29 @@ function Backup-Once {
   if (-not (Test-Path $Bk)) { New-Item -Path $Bk -Force | Out-Null }
   if (-not (Get-ItemProperty -Path $Bk -Name 'BackupTaken' -ErrorAction SilentlyContinue)) {
     $cur = Get-State
-    New-ItemProperty -Path $Bk -Name EnableTranscripting -Value ([int]$cur.EnableTranscripting) -PropertyType DWord -Force | Out-Null
-    New-ItemProperty -Path $Bk -Name EnableInvocationHeader -Value ([int]$cur.EnableInvocationHeader) -PropertyType DWord -Force | Out-Null
-    New-ItemProperty -Path $Bk -Name OutputDirectory -Value ([string]$cur.OutputDirectory) -PropertyType String -Force | Out-Null
-    New-ItemProperty -Path $Bk -Name BackupTaken -Value (Get-Date).ToString('o') -PropertyType String -Force | Out-Null
+    $valETS = if ($cur -and $null -ne $cur.EnableTranscripting) { [int]$cur.EnableTranscripting } else { -1 }
+    $valEIH = if ($cur -and $null -ne $cur.EnableInvocationHeader) { [int]$cur.EnableInvocationHeader } else { -1 }
+    $valOut = if ($cur -and $cur.OutputDirectory) { [string]$cur.OutputDirectory } else { '' }
+
+    New-ItemProperty -Path $Bk -Name 'EnableTranscripting'    -Value $valETS -PropertyType DWord -Force | Out-Null
+    New-ItemProperty -Path $Bk -Name 'EnableInvocationHeader' -Value $valEIH -PropertyType DWord -Force | Out-Null
+    New-ItemProperty -Path $Bk -Name 'OutputDirectory'        -Value $valOut -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $Bk -Name 'BackupTaken'            -Value (Get-Date).ToString('o') -PropertyType String -Force | Out-Null
   }
 }
 
 function Enforce {
   Ensure-Key
-  New-ItemProperty -Path $Base -Name EnableTranscripting -Value 1 -PropertyType DWord -Force | Out-Null
+  New-ItemProperty -Path $Base -Name $ReqName -Value 1 -PropertyType DWord -Force | Out-Null
   if ($IncludeInvocationHeader) {
-    New-ItemProperty -Path $Base -Name EnableInvocationHeader -Value 1 -PropertyType DWord -Force | Out-Null
+    New-ItemProperty -Path $Base -Name $InvName -Value 1 -PropertyType DWord -Force | Out-Null
   }
   if ($OutputDirectory -and $OutputDirectory.Trim().Length -gt 0) {
+    # Create local directory if it's a local path
     if ($OutputDirectory -notmatch '^[\\]{2}') {
       if (-not (Test-Path $OutputDirectory)) { New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null }
     }
-    New-ItemProperty -Path $Base -Name OutputDirectory -Value $OutputDirectory -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $Base -Name $OutName -Value $OutputDirectory -PropertyType String -Force | Out-Null
   }
 }
 
@@ -101,14 +109,28 @@ function Rollback {
   if (-not (Test-Path $Bk)) { Write-Warning 'No backup present.'; return }
   Ensure-Key
   $b = Get-ItemProperty -Path $Bk
-  foreach ($n in 'EnableTranscripting','EnableInvocationHeader','OutputDirectory') {
-    if ($b.PSObject.Properties.Name -contains $n) {
-      if ($null -ne $b.$n -and $b.$n.ToString().Length -gt 0) {
-        $type = ($n -eq 'OutputDirectory') ? 'String' : 'DWord'
-        New-ItemProperty -Path $Base -Name $n -Value $b.$n -PropertyType $type -Force | Out-Null
-      } else {
-        Remove-ItemProperty -Path $Base -Name $n -ErrorAction SilentlyContinue
-      }
+
+  if ($b.PSObject.Properties.Name -contains 'EnableTranscripting') {
+    if ($b.EnableTranscripting -is [int] -and $b.EnableTranscripting -ge 0) {
+      New-ItemProperty -Path $Base -Name $ReqName -Value $b.EnableTranscripting -PropertyType DWord -Force | Out-Null
+    } else {
+      Remove-ItemProperty -Path $Base -Name $ReqName -ErrorAction SilentlyContinue
+    }
+  }
+
+  if ($b.PSObject.Properties.Name -contains 'EnableInvocationHeader') {
+    if ($b.EnableInvocationHeader -is [int] -and $b.EnableInvocationHeader -ge 0) {
+      New-ItemProperty -Path $Base -Name $InvName -Value $b.EnableInvocationHeader -PropertyType DWord -Force | Out-Null
+    } else {
+      Remove-ItemProperty -Path $Base -Name $InvName -ErrorAction SilentlyContinue
+    }
+  }
+
+  if ($b.PSObject.Properties.Name -contains 'OutputDirectory') {
+    if ($b.OutputDirectory -and $b.OutputDirectory.ToString().Length -gt 0) {
+      New-ItemProperty -Path $Base -Name $OutName -Value $b.OutputDirectory -PropertyType String -Force | Out-Null
+    } else {
+      Remove-ItemProperty -Path $Base -Name $OutName -ErrorAction SilentlyContinue
     }
   }
 }
