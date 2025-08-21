@@ -1,0 +1,131 @@
+WN10-CC-000327
+
+Description
+Maintaining an audit trail of system activity logs can help identify configuration errors, troubleshoot service disruptions, and analyze compromises that have occurred, as well as detect attacks. Audit logs are necessary to provide a trail of evidence in case the system or network is compromised. Collecting this data is essential for analyzing the security of information assets and detecting signs of suspicious and unexpected behavior.
+
+
+Enabling PowerShell Transcription will record detailed information from the processing of PowerShell commands and scripts. This can provide additional detail when malware has run on a system.
+Solution
+Configure the policy value for Computer Configuration >> Administrative Templates >> Windows Components >> Windows PowerShell >> 'Turn on PowerShell Transcription' to 'Enabled'.
+
+
+Specify the Transcript output directory to point to a Central Log Server or another secure location to prevent user access.
+See Also
+https://dl.dod.cyber.mil/wp-content/uploads/stigs/zip/U_MS_Windows_10_V3R4_STIG.zip
+Audit File
+DISA_STIG_Microsoft_Windows_10_v3r4.audit
+Policy Value
+1
+
+
+_______________________________________________
+
+The following Powershell scripts are meant to harden the above vulnerability in Windows.
+
+First, save the large main script using the name provided:    Set-WN10-CC-000327.ps1
+
+Then use the command for pre-audit checks, to check if the Windows device is compliant/non-compliant.
+
+If non-compliant, perform remediation with the provided command.
+
+If rollback is needed, use the final provided command.
+
+Here are the commands:
+
+
+.\Set-WN10-CC-000327.ps1 -CheckOnly
+.\Set-WN10-CC-000327.ps1 -Enforce -IncludeInvocationHeader
+.\Set-WN10-CC-000327.ps1 -CheckOnly
+
+
+
+
+################
+
+Save this script as Set-WN10-CC-000327.ps1:
+
+
+# Set-WN10-CC-000327.ps1 (simple)
+[CmdletBinding()]
+param(
+  [switch]$Enforce,
+  [switch]$CheckOnly,
+  [switch]$Rollback,
+  [string]$OutputDirectory = 'C:\Transcripts',
+  [switch]$IncludeInvocationHeader
+)
+
+$ErrorActionPreference = 'Stop'
+$Base = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription'
+$Bk   = 'HKLM:\SOFTWARE\TitanConsultancy\STIGBackups\WN10-CC-000327'
+
+function Get-State {
+  if (Test-Path $Base) {
+    $p = Get-ItemProperty -Path $Base -ErrorAction SilentlyContinue
+    [pscustomobject]@{
+      EnableTranscripting   = $p.EnableTranscripting
+      EnableInvocationHeader= $p.EnableInvocationHeader
+      OutputDirectory       = $p.OutputDirectory
+    }
+  }
+}
+
+function Ensure-Key { if (-not (Test-Path $Base)) { New-Item -Path $Base -Force | Out-Null } }
+
+function Backup-Once {
+  if (-not (Test-Path $Bk)) { New-Item -Path $Bk -Force | Out-Null }
+  if (-not (Get-ItemProperty -Path $Bk -Name 'BackupTaken' -ErrorAction SilentlyContinue)) {
+    $cur = Get-State
+    New-ItemProperty -Path $Bk -Name EnableTranscripting -Value ([int]$cur.EnableTranscripting) -PropertyType DWord -Force | Out-Null
+    New-ItemProperty -Path $Bk -Name EnableInvocationHeader -Value ([int]$cur.EnableInvocationHeader) -PropertyType DWord -Force | Out-Null
+    New-ItemProperty -Path $Bk -Name OutputDirectory -Value ([string]$cur.OutputDirectory) -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $Bk -Name BackupTaken -Value (Get-Date).ToString('o') -PropertyType String -Force | Out-Null
+  }
+}
+
+function Enforce {
+  Ensure-Key
+  New-ItemProperty -Path $Base -Name EnableTranscripting -Value 1 -PropertyType DWord -Force | Out-Null
+  if ($IncludeInvocationHeader) {
+    New-ItemProperty -Path $Base -Name EnableInvocationHeader -Value 1 -PropertyType DWord -Force | Out-Null
+  }
+  if ($OutputDirectory -and $OutputDirectory.Trim().Length -gt 0) {
+    if ($OutputDirectory -notmatch '^[\\]{2}') {
+      if (-not (Test-Path $OutputDirectory)) { New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null }
+    }
+    New-ItemProperty -Path $Base -Name OutputDirectory -Value $OutputDirectory -PropertyType String -Force | Out-Null
+  }
+}
+
+function Rollback {
+  if (-not (Test-Path $Bk)) { Write-Warning 'No backup present.'; return }
+  Ensure-Key
+  $b = Get-ItemProperty -Path $Bk
+  foreach ($n in 'EnableTranscripting','EnableInvocationHeader','OutputDirectory') {
+    if ($b.PSObject.Properties.Name -contains $n) {
+      if ($null -ne $b.$n -and $b.$n.ToString().Length -gt 0) {
+        $type = ($n -eq 'OutputDirectory') ? 'String' : 'DWord'
+        New-ItemProperty -Path $Base -Name $n -Value $b.$n -PropertyType $type -Force | Out-Null
+      } else {
+        Remove-ItemProperty -Path $Base -Name $n -ErrorAction SilentlyContinue
+      }
+    }
+  }
+}
+
+# ---- Flow ----
+$cur = Get-State
+$compliant = ($cur -and $cur.EnableTranscripting -eq 1)
+
+if ($CheckOnly) {
+  if ($compliant) { Write-Output 'COMPLIANT: EnableTranscripting=1'; exit 0 }
+  else {
+    $val = if ($cur) { $cur.EnableTranscripting } else { '<key missing>' }
+    Write-Output "NONCOMPLIANT: EnableTranscripting=$val"; exit 1
+  }
+}
+
+if ($Enforce) { Backup-Once; Enforce; Write-Output 'Enforced WN10-CC-000327 (Transcription ON).'; exit 0 }
+if ($Rollback) { Rollback; Write-Output 'Rollback attempted.'; exit 0 }
+
+Write-Output 'Use -CheckOnly, -Enforce, or -Rollback.'
