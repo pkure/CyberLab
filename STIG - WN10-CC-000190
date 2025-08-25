@@ -47,8 +47,24 @@ Changes apply to new sessions; a logoff/restart or policy refresh helps ensure i
 __________________________________________________________
 
 
-Save this PowerShell script as 'Set-WN10-CC-000190.ps1':
+Script: Set-WN10-CC-000190.ps1
 
+Modes: -CheckOnly, -Enforce, -Rollback
+
+Backup: One-time backup stored at
+HKLM:\SOFTWARE\TitanConsultancy\STIGBackups\WN10-CC-000190\PreviousValue
+
+Exit codes: 0=compliant/ok, 1=noncompliant, 2=no action
+
+Requires elevated PowerShell (Run as Administrator). Compatible with PowerShell 5.1+.
+
+
+
+
+Save this script as: 'Set-WN10-CC-000190.ps1'
+
+
+___________________________________________________________
 
 
 <#
@@ -155,16 +171,39 @@ if ($Rollback) {
   Write-Output "Rollback attempted. Current $Name = $dispNow"
   exit 0
 }
+
 Write-Output "Use -CheckOnly, -Enforce, or -Rollback."
 exit 2
 
-___________________________________________
+___________________________________________________________________________
 
-To run the script:
 
-# Expect 255
-(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer').NoDriveTypeAutoRun
+How to use
 
-To Rollback:
+Run these from an elevated PowerShell in the folder where the script lives.
 
+# Optional prep
+cd C:\path\to\repo\stig\WN10-CC-000190
+Unblock-File .\Set-WN10-CC-000190.ps1
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+
+1) Audit / Check compliance
+.\Set-WN10-CC-000190.ps1 -CheckOnly
+$LASTEXITCODE  # 0=compliant, 1=noncompliant
+
+2) Enforce (sets value to 255 and backs up prior state)
+.\Set-WN10-CC-000190.ps1 -Enforce
+
+3) Verify
+$v = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer').NoDriveTypeAutoRun
+"Current -> Dec=$v  Hex=0x{0:X2}" -f $v   # expect 255 / 0xFF
+
+4) Inspect the backup (for audit/change control)
+Get-ItemProperty 'HKLM:\SOFTWARE\TitanConsultancy\STIGBackups\WN10-CC-000190' |
+  Select-Object PreviousValue, BackupTimestamp
+
+5) Rollback (restore pre-enforce state)
 .\Set-WN10-CC-000190.ps1 -Rollback
+# Verify again
+$v = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer' -ErrorAction SilentlyContinue).NoDriveTypeAutoRun
+"After Rollback -> Dec=$v  Hex=0x{0:X2}" -f $v
