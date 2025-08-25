@@ -1,0 +1,122 @@
+WN10-SO-000255 – Disable Local Machine Account Use for Remote SMB Connections
+
+This STIG requires Windows 10 systems to deny local accounts from using blank passwords for remote logons via SMB. Allowing blank passwords introduces significant risk: attackers with network access could authenticate over SMB without a password.
+
+STIG Requirement
+
+WN10-SO-000255: Local accounts with blank passwords must be restricted from console logon only.
+
+Severity: High
+If blank passwords are allowed for network logon, an attacker can remotely access resources without authentication. This setting enforces that accounts with blank passwords can only log on locally, not remotely.
+
+How to Fix- configure the policy:
+
+Navigate in Group Policy:
+Computer Configuration > Windows Settings > Security Settings > Local Policies > Security Options > Accounts: Limit local account use of blank passwords to console logon only
+
+Set to: Enabled
+
+Registry equivalent:
+
+Key:   HKLM\SYSTEM\CurrentControlSet\Control\Lsa
+Value: LimitBlankPasswordUse (DWORD)
+Data:  1
+
+Manual Registry Fix
+# Set the policy
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LimitBlankPasswordUse /t REG_DWORD /d 1 /f
+
+# Verify
+reg query "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LimitBlankPasswordUse
+
+
+Rollback (set back to default insecure state – not recommended):
+
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LimitBlankPasswordUse /t REG_DWORD /d 0 /f
+
+PowerShell Script (Check / Remediate / Rollback)
+
+
+_______________________________________________________________
+
+<#
+.SYNOPSIS
+  Enforce DISA STIG WN10-SO-000255 (Restrict blank passwords to console logon only).
+
+.DESCRIPTION
+  Ensures LimitBlankPasswordUse is set to 1 under HKLM:\SYSTEM\CurrentControlSet\Control\Lsa.
+  Creates a backup before changes for rollback.
+
+.PARAMETER Action
+  "Check"     - Display current setting
+  "Remediate" - Apply STIG-compliant value
+  "Rollback"  - Restore from backup if available
+
+.EXAMPLE
+  .\WN10-SO-000255.ps1 -Action Check
+#>
+
+param(
+    [Parameter(Mandatory=$true)]
+    [ValidateSet("Check","Remediate","Rollback")]
+    [string]$Action
+)
+
+$RegPath  = "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa"
+$Value    = "LimitBlankPasswordUse"
+$BackupKey = "HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-SO-000255"
+
+switch ($Action) {
+    "Check" {
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($null -eq $current) {
+            Write-Output "Setting not found. Default (insecure) behavior may apply."
+        } else {
+            Write-Output "$Value is set to $($current.$Value)"
+        }
+    }
+
+    "Remediate" {
+        # Backup current value
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($current) {
+            New-Item -Path $BackupKey -Force | Out-Null
+            New-ItemProperty -Path $BackupKey -Name $Value -Value $current.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Backup saved: $BackupKey\$Value = $($current.$Value)"
+        }
+
+        # Apply fix
+        New-ItemProperty -Path $RegPath -Name $Value -Value 1 -PropertyType DWORD -Force | Out-Null
+        Write-Output "Remediation applied: $Value set to 1"
+    }
+
+    "Rollback" {
+        $backup = Get-ItemProperty -Path $BackupKey -Name $Value -ErrorAction SilentlyContinue
+        if ($backup) {
+            New-ItemProperty -Path $RegPath -Name $Value -Value $backup.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Rolled back: $Value restored to $($backup.$Value)"
+        } else {
+            Write-Output "No backup found for rollback."
+        }
+    }
+}
+
+
+__________________________________________________________________
+
+
+One-Liner PowerShell Commands
+
+Check:
+
+Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name LimitBlankPasswordUse
+
+
+Remediate:
+
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name LimitBlankPasswordUse -Value 1
+
+
+Rollback (to insecure state):
+
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name LimitBlankPasswordUse -Value 0
