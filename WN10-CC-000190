@@ -1,0 +1,13 @@
+Description
+Allowing autoplay to execute may introduce malicious code to a system. Autoplay begins reading from a drive as soon as you insert media in the drive. As a result, the setup file of programs or music on audio media may start. By default, autoplay is disabled on removable drives, such as the floppy disk drive (but not the CD-ROM drive) and on network drives. If you enable this policy, you can also disable autoplay on all drives.
+
+Solution
+Configure the policy value for Computer Configuration >> Administrative Templates >> Windows Components >> AutoPlay Policies >> 'Turn off AutoPlay' to 'Enabled:All Drives'.
+
+See Also
+https://dl.dod.cyber.mil/wp-content/uploads/stigs/zip/U_MS_Windows_10_V3R4_STIG.zip
+Audit File
+DISA_STIG_Microsoft_Windows_10_v3r4.audit
+
+Policy Value
+255
