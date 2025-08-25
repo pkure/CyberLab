@@ -1,61 +1,57 @@
-WN10-SO-000255 – Disable Local Machine Account Use for Remote SMB Connections
+WN10-SO-000255 – UAC Must Automatically Deny Elevation Requests for Standard Users
+Overview
 
-This STIG requires Windows 10 systems to deny local accounts from using blank passwords for remote logons via SMB. Allowing blank passwords introduces significant risk: attackers with network access could authenticate over SMB without a password.
+This setting ensures that standard user accounts cannot bypass User Account Control (UAC) prompts by attempting to elevate privileges. If set insecurely, a standard user might be prompted to enter administrator credentials, potentially exposing privileged credentials or weakening least privilege.
 
 STIG Requirement
 
-WN10-SO-000255: Local accounts with blank passwords must be restricted from console logon only.
+WN10-SO-000255: User Account Control must automatically deny elevation requests for standard users.
 
-Severity: High
-If blank passwords are allowed for network logon, an attacker can remotely access resources without authentication. This setting enforces that accounts with blank passwords can only log on locally, not remotely.
+Severity: Medium
 
-How to Fix- configure the policy:
+Discussion: By forcing automatic denial, Windows ensures that elevation attempts from standard users are blocked outright, rather than prompting for administrator credentials. This limits attack surface by preventing credential prompts that could be targeted or abused.
+
+Fix:
+Configure the policy:
 
 Navigate in Group Policy:
-Computer Configuration > Windows Settings > Security Settings > Local Policies > Security Options > Accounts: Limit local account use of blank passwords to console logon only
+Computer Configuration > Windows Settings > Security Settings > Local Policies > Security Options > User Account Control: Behavior of the elevation prompt for standard users
 
-Set to: Enabled
+Set to: Automatically deny elevation requests
 
 Registry equivalent:
 
-Key:   HKLM\SYSTEM\CurrentControlSet\Control\Lsa
-Value: LimitBlankPasswordUse (DWORD)
-Data:  1
+Key:   HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+Value: ConsentPromptBehaviorUser (DWORD)
+Data:  0
 
 Manual Registry Fix
-# Set the policy
-reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LimitBlankPasswordUse /t REG_DWORD /d 1 /f
+# Apply fix
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v ConsentPromptBehaviorUser /t REG_DWORD /d 0 /f
 
 # Verify
-reg query "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LimitBlankPasswordUse
+reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v ConsentPromptBehaviorUser
 
 
-Rollback (set back to default insecure state – not recommended):
+Rollback (not recommended):
 
-reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LimitBlankPasswordUse /t REG_DWORD /d 0 /f
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v ConsentPromptBehaviorUser /t REG_DWORD /d 1 /f
 
 PowerShell Script (Check / Remediate / Rollback)
 
-Save the following as 'Set-WN10-SO-000255.ps1'
+Save as Set-WN10-SO-000255.ps1
 
 
-_______________________________________________________________
+_______________________________________________________________________
 
 <#
 .SYNOPSIS
-  Enforce DISA STIG WN10-SO-000255 (Restrict blank passwords to console logon only).
+  Enforce DISA STIG WN10-SO-000255 (UAC must automatically deny elevation requests for standard users).
 
 .DESCRIPTION
-  Ensures LimitBlankPasswordUse is set to 1 under HKLM:\SYSTEM\CurrentControlSet\Control\Lsa.
+  Ensures ConsentPromptBehaviorUser is set to 0 under
+  HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System.
   Creates a backup before changes for rollback.
-
-.PARAMETER Action
-  "Check"     - Display current setting
-  "Remediate" - Apply STIG-compliant value
-  "Rollback"  - Restore from backup if available
-
-.EXAMPLE
-  .\Set-WN10-SO-000255.ps1 -Action Check
 #>
 
 param(
@@ -64,22 +60,21 @@ param(
     [string]$Action
 )
 
-$RegPath  = "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa"
-$Value    = "LimitBlankPasswordUse"
+$RegPath  = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+$Value    = "ConsentPromptBehaviorUser"
 $BackupKey = "HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-SO-000255"
 
 switch ($Action) {
     "Check" {
         $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
         if ($null -eq $current) {
-            Write-Output "Setting not found. Default (insecure) behavior may apply."
+            Write-Output "Setting not found. Default may be insecure."
         } else {
             Write-Output "$Value is set to $($current.$Value)"
         }
     }
 
     "Remediate" {
-        # Backup current value
         $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
         if ($current) {
             New-Item -Path $BackupKey -Force | Out-Null
@@ -87,9 +82,8 @@ switch ($Action) {
             Write-Output "Backup saved: $BackupKey\$Value = $($current.$Value)"
         }
 
-        # Apply fix
-        New-ItemProperty -Path $RegPath -Name $Value -Value 1 -PropertyType DWORD -Force | Out-Null
-        Write-Output "Remediation applied: $Value set to 1"
+        New-ItemProperty -Path $RegPath -Name $Value -Value 0 -PropertyType DWORD -Force | Out-Null
+        Write-Output "Remediation applied: $Value set to 0"
     }
 
     "Rollback" {
@@ -104,41 +98,25 @@ switch ($Action) {
 }
 
 
-__________________________________________________________________
+_______________________________________________________________________
+
 
 
 One-Liner PowerShell Commands
 
-Check:
+Check
 
-PS:
 .\Set-WN10-SO-000255.ps1 -Action Check
-
-or
-
-PS:
-Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name LimitBlankPasswordUse
+Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name ConsentPromptBehaviorUser
 
 
+Remediate
 
-Remediate:
-
-PS:
 .\Set-WN10-SO-000255.ps1 -Action Remediate
-
-or
-
-PS:
-Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name LimitBlankPasswordUse -Value 1
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name ConsentPromptBehaviorUser -Value 0
 
 
+Rollback
 
-Rollback (to insecure state):
-
-PS:
 .\Set-WN10-SO-000255.ps1 -Action Rollback
-
-or
-
-PS:
-Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name LimitBlankPasswordUse -Value 0
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name ConsentPromptB
