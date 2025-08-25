@@ -1,0 +1,123 @@
+Overview
+
+Windows Hello and “convenience PIN” logons store authentication secrets locally and may bypass domain password requirements. This weakens the security model, especially in domain environments, where centralized credential policies are enforced.
+
+STIG Requirement
+
+WN10-CC-000370: The convenience PIN for Windows 10 must be disabled.
+
+Severity: Medium
+
+Discussion: A PIN sign-in allows use of a weaker local credential that does not meet domain password complexity or lockout policies. It should be disabled to enforce use of proper authentication mechanisms.
+
+Fix Text
+
+Configure the policy:
+
+Navigate in Group Policy:
+Computer Configuration > Administrative Templates > System > Logon > Turn on convenience PIN sign-in
+
+Set to: Disabled
+
+Registry equivalent:
+
+Key:   HKLM\SOFTWARE\Policies\Microsoft\Windows\System
+Value: AllowDomainPINLogon (DWORD)
+Data:  0
+
+Manual Registry Fix
+# Disable convenience PIN
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v AllowDomainPINLogon /t REG_DWORD /d 0 /f
+
+# Verify
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v AllowDomainPINLogon
+
+
+Rollback (not recommended):
+
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v AllowDomainPINLogon /t REG_DWORD /d 1 /f
+
+PowerShell Script (Check / Remediate / Rollback)
+
+Save as Set-WN10-CC-000370.ps1
+
+<#
+.SYNOPSIS
+  Enforce DISA STIG WN10-CC-000370 (Disable Windows convenience PIN sign-in).
+
+.DESCRIPTION
+  Ensures AllowDomainPINLogon is set to 0 under
+  HKLM:\SOFTWARE\Policies\Microsoft\Windows\System.
+  Creates a backup before changes for rollback.
+#>
+
+param(
+    [Parameter(Mandatory=$true)]
+    [ValidateSet("Check","Remediate","Rollback")]
+    [string]$Action
+)
+
+$RegPath  = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System"
+$Value    = "AllowDomainPINLogon"
+$BackupKey = "HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-CC-000370"
+
+switch ($Action) {
+    "Check" {
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($null -eq $current) {
+            Write-Output "Setting not found. Default may be insecure."
+        } else {
+            Write-Output "$Value is set to $($current.$Value)"
+        }
+    }
+
+    "Remediate" {
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($current) {
+            New-Item -Path $BackupKey -Force | Out-Null
+            New-ItemProperty -Path $BackupKey -Name $Value -Value $current.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Backup saved: $BackupKey\$Value = $($current.$Value)"
+        }
+
+        New-ItemProperty -Path $RegPath -Name $Value -Value 0 -PropertyType DWORD -Force | Out-Null
+        Write-Output "Remediation applied: $Value set to 0"
+    }
+
+    "Rollback" {
+        $backup = Get-ItemProperty -Path $BackupKey -Name $Value -ErrorAction SilentlyContinue
+        if ($backup) {
+            New-ItemProperty -Path $RegPath -Name $Value -Value $backup.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Rolled back: $Value restored to $($backup.$Value)"
+        } else {
+            Write-Output "No backup found for rollback."
+        }
+    }
+}
+
+One-Liner PowerShell Commands
+
+Check
+
+.\Set-WN10-CC-000370.ps1 -Action Check
+
+or
+
+Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name AllowDomainPINLogon
+
+
+Remediate
+
+.\Set-WN10-CC-000370.ps1 -Action Remediate
+
+or
+
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name AllowDomainPINLogon -Value 0
+
+
+Rollback
+
+.\Set-WN10-CC-000370.ps1 -Action Rollback
+
+or
+
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name AllowDomainPINLogon -Value 1
