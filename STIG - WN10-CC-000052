@@ -44,6 +44,11 @@ PowerShell Script (Check / Remediate / Rollback)
 
 Save as Set-WN10-CC-000052.ps1
 
+
+
+__________________________________________________________________________
+
+
 <#
 .SYNOPSIS
   Enforce DISA STIG WN10-CC-000052 (Prioritize ECC curves with longer key lengths first).
@@ -108,6 +113,10 @@ switch ($Action) {
         }
     }
 }
+
+
+__________________________________________________________________________
+
 
 Example Usage
 
