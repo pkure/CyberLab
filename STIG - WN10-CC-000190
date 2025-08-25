@@ -67,13 +67,28 @@ Save this script as: 'Set-WN10-CC-000190.ps1'
 ___________________________________________________________
 
 
+Script: Set-WN10-CC-000190.ps1
+
+Modes: -CheckOnly, -Enforce, -Rollback
+
+Backup (LogN Pacific path):
+HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-CC-000190\PreviousValue
+
+Exit codes: 0 = compliant/ok, 1 = noncompliant, 2 = no action
+
+Requires: Elevated PowerShell (Run as Administrator), PowerShell 5.1+
+
+
+_______________________________________________________________
+
+
 <#
 .SYNOPSIS
   Enforce DISA STIG WN10-CC-000190 (Disable AutoPlay for all drives).
 
 .DESCRIPTION
   Sets HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\NoDriveTypeAutoRun = 0xFF (255).
-  Creates a backup under HKLM:\SOFTWARE\TitanConsultancy\STIGBackups\WN10-CC-000190.
+  Creates a backup under HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-CC-000190.
   Exit code 0 when compliant with -CheckOnly.
 
 .PARAMETER CheckOnly  Report compliance and exit (0 = compliant).
@@ -98,7 +113,7 @@ $ErrorActionPreference = 'Stop'
 $RegPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer'
 $Name    = 'NoDriveTypeAutoRun'
 $ReqVal  = 255      # 0xFF
-$BkPath  = 'HKLM:\SOFTWARE\TitanConsultancy\STIGBackups\WN10-CC-000190'
+$BkPath  = 'HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-CC-000190'
 $BkName  = 'PreviousValue'
 $BkTime  = 'BackupTimestamp'
 
@@ -175,12 +190,14 @@ if ($Rollback) {
 Write-Output "Use -CheckOnly, -Enforce, or -Rollback."
 exit 2
 
-___________________________________________________________________________
 
+
+
+_______________________________________________________________
 
 How to use
 
-Run these from an elevated PowerShell in the folder where the script lives.
+Run these from an elevated PowerShell in the folder where the script lives (e.g., on peter-vm as user pedro).
 
 # Optional prep
 cd C:\path\to\repo\stig\WN10-CC-000190
@@ -189,7 +206,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
 1) Audit / Check compliance
 .\Set-WN10-CC-000190.ps1 -CheckOnly
-$LASTEXITCODE  # 0=compliant, 1=noncompliant
+$LASTEXITCODE   # 0 = compliant, 1 = noncompliant, 2 = no action
 
 2) Enforce (sets value to 255 and backs up prior state)
 .\Set-WN10-CC-000190.ps1 -Enforce
@@ -199,7 +216,7 @@ $v = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies
 "Current -> Dec=$v  Hex=0x{0:X2}" -f $v   # expect 255 / 0xFF
 
 4) Inspect the backup (for audit/change control)
-Get-ItemProperty 'HKLM:\SOFTWARE\TitanConsultancy\STIGBackups\WN10-CC-000190' |
+Get-ItemProperty 'HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-CC-000190' |
   Select-Object PreviousValue, BackupTimestamp
 
 5) Rollback (restore pre-enforce state)
