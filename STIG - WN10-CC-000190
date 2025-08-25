@@ -149,20 +149,22 @@ if ($Enforce) {
 }
 
 if ($Rollback) {
-  Backup-Once  # ensure we keep history of this attempt
   Restore-Backup
   $now = Get-State
   $dispNow = if ($null -eq $now) { '<missing>' } else { $now }
   Write-Output "Rollback attempted. Current $Name = $dispNow"
   exit 0
 }
-
 Write-Output "Use -CheckOnly, -Enforce, or -Rollback."
 exit 2
 
 ___________________________________________
 
-
+To run the script:
 
 # Expect 255
 (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer').NoDriveTypeAutoRun
+
+To Rollback:
+
+.\Set-WN10-CC-000190.ps1 -Rollback
