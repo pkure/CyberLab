@@ -11,3 +11,158 @@ DISA_STIG_Microsoft_Windows_10_v3r4.audit
 
 Policy Value
 255
+
+
+REMEDIATION:
+
+Autoplay must be disabled for all drives. Compliance is typically checked via the registry value:
+HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\NoDriveTypeAutoRun = 0xFF (decimal 255). 
+app.xylok.io
+Tenable®
+
+Microsoft’s documentation explains NoDriveTypeAutoRun controls AutoRun/AutoPlay behavior per drive type; setting all bits (0xFF) disables it for all drives.
+
+
+REGISTRY FIX:
+
+Start elevated PowerShell or regedit.
+
+Ensure key exists and set the value:
+
+Path: HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer
+
+Name: NoDriveTypeAutoRun (DWORD) → 255 (Decimal) or FF (Hex).
+(HKLM overrides HKCU; value disables AutoPlay on all drive types.) 
+app.xylok.io
+Microsoft Learn
+
+Changes apply to new sessions; a logoff/restart or policy refresh helps ensure it’s active everywhere.
+
+
+
+
+
+
+
+__________________________________________________________
+
+
+Save this PowerShell script as 'Set-WN10-CC-000190.ps1':
+
+
+
+<#
+.SYNOPSIS
+  Enforce DISA STIG WN10-CC-000190 (Disable AutoPlay for all drives).
+
+.DESCRIPTION
+  Sets HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\NoDriveTypeAutoRun = 0xFF (255).
+  Creates a backup under HKLM:\SOFTWARE\TitanConsultancy\STIGBackups\WN10-CC-000190.
+  Exit code 0 when compliant with -CheckOnly.
+
+.PARAMETER CheckOnly  Report compliance and exit (0 = compliant).
+.PARAMETER Enforce    Apply required setting.
+.PARAMETER Rollback   Restore from backup (if present).
+
+.EXAMPLE
+  .\Set-WN10-CC-000190.ps1 -CheckOnly
+  .\Set-WN10-CC-000190.ps1 -Enforce
+  .\Set-WN10-CC-000190.ps1 -Rollback
+#>
+
+[CmdletBinding(SupportsShouldProcess)]
+param(
+  [switch]$CheckOnly,
+  [switch]$Enforce,
+  [switch]$Rollback
+)
+
+$ErrorActionPreference = 'Stop'
+
+$RegPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer'
+$Name    = 'NoDriveTypeAutoRun'
+$ReqVal  = 255      # 0xFF
+$BkPath  = 'HKLM:\SOFTWARE\TitanConsultancy\STIGBackups\WN10-CC-000190'
+$BkName  = 'PreviousValue'
+$BkTime  = 'BackupTimestamp'
+
+function Get-State {
+  try {
+    if (Test-Path $RegPath) {
+      $p = Get-ItemProperty -Path $RegPath -Name $Name -ErrorAction SilentlyContinue
+      if ($p) { return [int]$p.$Name }
+    }
+    return $null
+  } catch { return $null }
+}
+
+function Backup-Once {
+  if (-not (Test-Path $BkPath)) { New-Item -Path $BkPath -Force | Out-Null }
+  $has = Get-ItemProperty -Path $BkPath -Name $BkName -ErrorAction SilentlyContinue
+  if ($null -eq $has) {
+    $cur = Get-State
+    $toStore = if ($null -eq $cur) { -1 } else { [int]$cur }
+    New-ItemProperty -Path $BkPath -Name $BkName -Value $toStore -PropertyType DWord -Force | Out-Null
+    New-ItemProperty -Path $BkPath -Name $BkTime -Value (Get-Date).ToString('o') -PropertyType String -Force | Out-Null
+  }
+}
+
+function Set-Compliant {
+  if (-not (Test-Path $RegPath)) { New-Item -Path $RegPath -Force | Out-Null }
+  if ($PSCmdlet.ShouldProcess("$RegPath\$Name","Set to $ReqVal (0xFF)")) {
+    New-ItemProperty -Path $RegPath -Name $Name -Value $ReqVal -PropertyType DWord -Force | Out-Null
+  }
+}
+
+function Restore-Backup {
+  $bk = Get-ItemProperty -Path $BkPath -ErrorAction SilentlyContinue
+  if (-not $bk -or -not ($bk.PSObject.Properties.Name -contains $BkName)) {
+    Write-Warning "No backup found at $BkPath"; return
+  }
+  $prev = [int]$bk.$BkName
+  if ($prev -ge 0) {
+    if (-not (Test-Path $RegPath)) { New-Item -Path $RegPath -Force | Out-Null }
+    New-ItemProperty -Path $RegPath -Name $Name -Value $prev -PropertyType DWord -Force | Out-Null
+  } else {
+    Remove-ItemProperty -Path $RegPath -Name $Name -ErrorAction SilentlyContinue
+  }
+}
+
+# ----- Flow -----
+$cur = Get-State
+$compliant = ($cur -eq $ReqVal)
+
+if ($CheckOnly) {
+  if ($compliant) { Write-Output "COMPLIANT: $Name=$cur"; exit 0 }
+  else {
+    $disp = if ($null -eq $cur) { '<missing>' } else { $cur }
+    Write-Output "NONCOMPLIANT: $Name=$disp (required $ReqVal)"; exit 1
+  }
+}
+
+if ($Enforce) {
+  if ($compliant) { Write-Output "Already compliant ($Name=$cur)."; exit 0 }
+  Backup-Once
+  Set-Compliant
+  Write-Output "Enforced WN10-CC-000190. $Name set to $ReqVal (0xFF)."
+  exit 0
+}
+
+if ($Rollback) {
+  Backup-Once  # ensure we keep history of this attempt
+  Restore-Backup
+  $now = Get-State
+  $dispNow = if ($null -eq $now) { '<missing>' } else { $now }
+  Write-Output "Rollback attempted. Current $Name = $dispNow"
+  exit 0
+}
+
+Write-Output "Use -CheckOnly, -Enforce, or -Rollback."
+exit 2
+
+___________________________________________
+
+
+
+# Expect 255
+(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer').NoDriveTypeAutoRun
