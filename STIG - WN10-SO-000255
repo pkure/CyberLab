@@ -55,7 +55,7 @@ _______________________________________________________________
   "Rollback"  - Restore from backup if available
 
 .EXAMPLE
-  .\WN10-SO-000255.ps1 -Action Check
+  .\Set-WN10-SO-000255.ps1 -Action Check
 #>
 
 param(
@@ -111,24 +111,34 @@ One-Liner PowerShell Commands
 
 Check:
 
+PS:
 .\Set-WN10-SO-000255.ps1 -Action Check
 
 or
 
+PS:
 Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name LimitBlankPasswordUse
 
 
 
 Remediate:
 
+PS:
 .\Set-WN10-SO-000255.ps1 -Action Remediate
 
+or
+
+PS:
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name LimitBlankPasswordUse -Value 1
 
 
 
 Rollback (to insecure state):
 
+PS:
 .\Set-WN10-SO-000255.ps1 -Action Rollback
 
+or
+
+PS:
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name LimitBlankPasswordUse -Value 0
