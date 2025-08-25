@@ -36,6 +36,8 @@ reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LimitBlankPasswordUse /t 
 
 PowerShell Script (Check / Remediate / Rollback)
 
+Save the following as 'Set-WN10-SO-000255.ps1'
+
 
 _______________________________________________________________
 
@@ -109,14 +111,24 @@ One-Liner PowerShell Commands
 
 Check:
 
+.\Set-WN10-SO-000255.ps1 -Action Check
+
+or
+
 Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name LimitBlankPasswordUse
+
 
 
 Remediate:
 
+.\Set-WN10-SO-000255.ps1 -Action Remediate
+
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name LimitBlankPasswordUse -Value 1
 
 
+
 Rollback (to insecure state):
+
+.\Set-WN10-SO-000255.ps1 -Action Rollback
 
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name LimitBlankPasswordUse -Value 0
