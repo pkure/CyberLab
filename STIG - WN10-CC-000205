@@ -135,7 +135,7 @@ Remediate (default to Basic = 1)
 
 .\Set-WN10-CC-000205.ps1 -Action Remediate
 
-
+ 
 Remediate (explicit Security = 0)
 
 .\Set-WN10-CC-000205.ps1 -Action Remediate -DesiredLevel 0
