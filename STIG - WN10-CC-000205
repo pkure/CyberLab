@@ -1,0 +1,167 @@
+WN10-CC-000205 – Windows Telemetry must not be configured to Full
+Overview
+
+Windows telemetry collects diagnostic and usage data for Microsoft. The Full level allows transmission of detailed system files and user content, which is not permitted in DoD/enterprise environments. This setting ensures telemetry is restricted to an approved level.
+
+STIG Requirement
+
+WN10-CC-000205: Windows Telemetry must not be configured to Full.
+
+Severity: Medium
+
+Discussion: Telemetry set to Full may send sensitive information such as user files or in-memory contents to Microsoft. Approved levels are Basic (1) or Security (0) depending on edition. This control prevents sensitive data leakage by enforcing the lower levels.
+
+Fix Text
+
+Configure the policy:
+
+Navigate in Group Policy:
+Computer Configuration > Administrative Templates > Windows Components > Data Collection and Preview Builds > Allow Telemetry
+
+Set to: Enabled and select Basic (1) or Security (0).
+
+Note: Security (0) is available only on Enterprise/Education editions.
+
+Registry equivalent:
+
+Key:   HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection
+Value: AllowTelemetry (DWORD)
+Data:  0 or 1   (must not be 3 = Full)
+
+Manual Registry Fix
+# Set to Basic (1)
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" /v AllowTelemetry /t REG_DWORD /d 1 /f
+
+# Or set to Security (0) if supported
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" /v AllowTelemetry /t REG_DWORD /d 0 /f
+
+# Verify
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" /v AllowTelemetry
+
+
+Rollback (not recommended – insecure state = Full / 3):
+
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" /v AllowTelemetry /t REG_DWORD /d 3 /f
+
+PowerShell Script (Check / Remediate / Rollback)
+
+Save as Set-WN10-CC-000205.ps1
+
+
+
+
+
+
+____________________________________________________________________________________
+
+
+
+
+
+<#
+.SYNOPSIS
+  Enforce DISA STIG WN10-CC-000205 (Windows Telemetry must not be configured to Full).
+
+.DESCRIPTION
+  Ensures AllowTelemetry is set to 0 (Security) or 1 (Basic), never 3 (Full).
+  Creates a backup before changes for rollback.
+
+.PARAMETER Action
+  "Check"     - Display current setting
+  "Remediate" - Apply STIG-compliant value (defaults to Basic = 1)
+  "Rollback"  - Restore from backup if available
+
+.EXAMPLE
+  .\Set-WN10-CC-000205.ps1 -Action Check
+#>
+
+param(
+    [Parameter(Mandatory=$true)]
+    [ValidateSet("Check","Remediate","Rollback")]
+    [string]$Action,
+
+    [ValidateSet(0,1)]
+    [int]$DesiredLevel = 1   # Default to Basic
+)
+
+$RegPath  = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection"
+$Value    = "AllowTelemetry"
+$BackupKey = "HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-CC-000205"
+
+switch ($Action) {
+    "Check" {
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($null -eq $current) {
+            Write-Output "Setting not found. Default may be insecure."
+        } else {
+            Write-Output "$Value is set to $($current.$Value)"
+        }
+    }
+
+    "Remediate" {
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($current) {
+            New-Item -Path $BackupKey -Force | Out-Null
+            New-ItemProperty -Path $BackupKey -Name $Value -Value $current.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Backup saved: $BackupKey\$Value = $($current.$Value)"
+        }
+
+        New-ItemProperty -Path $RegPath -Name $Value -Value $DesiredLevel -PropertyType DWORD -Force | Out-Null
+        Write-Output "Remediation applied: $Value set to $DesiredLevel"
+    }
+
+    "Rollback" {
+        $backup = Get-ItemProperty -Path $BackupKey -Name $Value -ErrorAction SilentlyContinue
+        if ($backup) {
+            New-ItemProperty -Path $RegPath -Name $Value -Value $backup.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Rolled back: $Value restored to $($backup.$Value)"
+        } else {
+            Write-Output "No backup found for rollback."
+        }
+    }
+}
+
+____________________________________________________________________________________
+
+
+Example Usage
+
+Check current setting
+
+.\Set-WN10-CC-000205.ps1 -Action Check
+
+
+Remediate (default to Basic = 1)
+
+.\Set-WN10-CC-000205.ps1 -Action Remediate
+
+
+Remediate (explicit Security = 0)
+
+.\Set-WN10-CC-000205.ps1 -Action Remediate -DesiredLevel 0
+
+
+Rollback
+
+.\Set-WN10-CC-000205.ps1 -Action Rollback
+
+One-Liner PowerShell Commands
+
+Check
+
+Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name AllowTelemetry
+
+
+Remediate (Basic)
+
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name AllowTelemetry -Value 1
+
+
+Remediate (Security)
+
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name AllowTelemetry -Value 0
+
+
+Rollback (insecure = Full)
+
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name AllowTelemetry -
