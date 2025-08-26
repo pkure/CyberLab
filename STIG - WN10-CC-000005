@@ -1,0 +1,155 @@
+WN10-CC-000005 – Camera Access from the Lock Screen Must Be Disabled
+Overview
+
+Windows 10 allows the camera to be used from the lock screen before a user is authenticated. This increases the risk of privacy invasion and possible exploitation of camera services by an attacker with physical access. Disabling camera access from the lock screen reduces this attack surface.
+
+STIG Requirement
+
+WN10-CC-000005: Camera access from the lock screen must be disabled.
+
+Severity: Medium
+
+Discussion: Allowing the lock screen to expose hardware features such as the camera provides opportunities for exploitation. Disabling it ensures that the camera cannot be used until after successful authentication.
+
+Fix Text
+
+Configure the policy:
+
+Navigate in Group Policy:
+Computer Configuration > Administrative Templates > Control Panel > Personalization > Prevent enabling lock screen camera
+
+Set to: Enabled
+
+Registry equivalent:
+
+Key:   HKLM\SOFTWARE\Policies\Microsoft\Windows\Personalization
+Value: NoLockScreenCamera (DWORD)
+Data:  1
+
+Manual Registry Fix
+# Disable lock screen camera
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Personalization" /v NoLockScreenCamera /t REG_DWORD /d 1 /f
+
+# Verify
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\Personalization" /v NoLockScreenCamera
+
+
+Rollback (not recommended – allows camera access on lock screen):
+
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Personalization" /v NoLockScreenCamera /t REG_DWORD /d 0 /f
+
+PowerShell Script (Check / Remediate / Rollback)
+
+Save as Set-WN10-CC-000005.ps1
+
+
+___________________________________________________________________________
+
+
+<#
+.SYNOPSIS
+  Enforce DISA STIG WN10-CC-000005 (Camera access from the lock screen must be disabled).
+
+.DESCRIPTION
+  Ensures NoLockScreenCamera is set to 1 under
+  HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization.
+  Creates a backup before changes for rollback.
+
+.NOTES
+  Author          : Peter Kure
+  LinkedIn        : linkedin.com/in/peter-kure
+  Github          : github.com/pkure
+  Date Created    : 8/25/2025
+  Last Modified   : 8/25/2025
+  Version         : 1.0
+  CVEs            : n/a
+  Plugin IDs      : n/a
+  STIG-ID         : WN10-CC-000005
+
+.PARAMETER Action
+  "Check"     - Display current setting
+  "Remediate" - Apply STIG-compliant value
+  "Rollback"  - Restore from backup if available
+
+.EXAMPLE
+  .\Set-WN10-CC-000005.ps1 -Action Check
+#>
+
+param(
+    [Parameter(Mandatory=$true)]
+    [ValidateSet("Check","Remediate","Rollback")]
+    [string]$Action
+)
+
+$RegPath  = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization"
+$Value    = "NoLockScreenCamera"
+$BackupKey = "HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-CC-000005"
+
+switch ($Action) {
+    "Check" {
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($null -eq $current) {
+            Write-Output "Setting not found. Default may be insecure."
+        } else {
+            Write-Output "$Value is set to $($current.$Value)"
+        }
+    }
+
+    "Remediate" {
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($current) {
+            New-Item -Path $BackupKey -Force | Out-Null
+            New-ItemProperty -Path $BackupKey -Name $Value -Value $current.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Backup saved: $BackupKey\$Value = $($current.$Value)"
+        }
+
+        New-ItemProperty -Path $RegPath -Name $Value -Value 1 -PropertyType DWORD -Force | Out-Null
+        Write-Output "Remediation applied: $Value set to 1"
+    }
+
+    "Rollback" {
+        $backup = Get-ItemProperty -Path $BackupKey -Name $Value -ErrorAction SilentlyContinue
+        if ($backup) {
+            New-ItemProperty -Path $RegPath -Name $Value -Value $backup.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Rolled back: $Value restored to $($backup.$Value)"
+        } else {
+            Write-Output "No backup found for rollback."
+        }
+    }
+}
+
+
+___________________________________________________________________________
+
+
+Example Usage
+
+Check current setting
+
+.\Set-WN10-CC-000005.ps1 -Action Check
+
+
+Remediate
+
+.\Set-WN10-CC-000005.ps1 -Action Remediate
+
+
+Rollback
+
+.\Set-WN10-CC-000005.ps1 -Action Rollback
+
+One-Liner PowerShell Commands
+
+Check
+
+Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Name NoLockScreenCamera
+
+
+Remediate
+
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Name NoLockScreenCamera -Value 1
+
+
+Rollback
+
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Name NoLockScreenCamera
