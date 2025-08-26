@@ -91,6 +91,17 @@ _______________________________________________________________
   Creates a backup under HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-CC-000190.
   Exit code 0 when compliant with -CheckOnly.
 
+.NOTES
+  Author          : Peter Kure
+  LinkedIn        : linkedin.com/in/peter-kure
+  Github          : github.com/pkure
+  Date Created    : 8/24/2025
+  Last Modified   : 8/24/2025
+  Version         : 1.0
+  CVEs            : n/a
+  Plugin IDs      : n/a
+  STIG-ID         : WN10-CC-000190
+
 .PARAMETER CheckOnly  Report compliance and exit (0 = compliant).
 .PARAMETER Enforce    Apply required setting.
 .PARAMETER Rollback   Restore from backup (if present).
