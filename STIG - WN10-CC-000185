@@ -1,0 +1,147 @@
+WN10-CC-000185 – Default Autorun Behavior Must Prevent Autorun Commands
+Overview
+
+Autorun allows applications or media (like USB drives or CDs) to automatically execute commands when inserted. This creates a major attack surface for malware. This setting ensures Windows prevents autorun commands by default.
+
+STIG Requirement
+
+WN10-CC-000185: The default autorun behavior must be configured to prevent autorun commands.
+
+Severity: Medium
+
+Discussion: Autorun functionality has been widely abused by attackers to automatically launch malicious code from removable media. Disabling autorun commands reduces the risk of malware spreading through USB, CD/DVD, or network drives.
+
+Fix Text
+
+Configure the policy:
+
+Navigate in Group Policy:
+Computer Configuration > Administrative Templates > Windows Components > AutoPlay Policies > Set the default behavior for AutoRun
+
+Set to: Enabled → “Do not execute any autorun commands”
+
+Registry equivalent:
+
+Key:   HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer
+Value: NoAutorun (DWORD)
+Data:  1
+
+Manual Registry Fix
+# Prevent autorun
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" /v NoAutorun /t REG_DWORD /d 1 /f
+
+# Verify
+reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" /v NoAutorun
+
+
+Rollback (not recommended – re-enables autorun):
+
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" /v NoAutorun /t REG_DWORD /d 0 /f
+
+PowerShell Script (Check / Remediate / Rollback)
+
+Save as Set-WN10-CC-000185.ps1
+
+<#
+.SYNOPSIS
+  Enforce DISA STIG WN10-CC-000185 (Default autorun behavior must prevent autorun commands).
+
+.DESCRIPTION
+  Ensures NoAutorun is set to 1 under
+  HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer.
+  Creates a backup before changes for rollback.
+
+.NOTES
+  Author          : Peter Kure
+  LinkedIn        : linkedin.com/in/peter-kure
+  Github          : github.com/pkure
+  Date Created    : 8/26/2025
+  Last Modified   : 8/26/2025
+  Version         : 1.0
+  CVEs            : n/a
+  Plugin IDs      : n/a
+  STIG-ID         : WN10-CC-000185
+
+.PARAMETER Action
+  "Check"     - Display current setting
+  "Remediate" - Apply STIG-compliant value
+  "Rollback"  - Restore from backup if available
+
+.EXAMPLE
+  .\Set-WN10-CC-000185.ps1 -Action Check
+#>
+
+param(
+    [Parameter(Mandatory=$true)]
+    [ValidateSet("Check","Remediate","Rollback")]
+    [string]$Action
+)
+
+$RegPath  = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer"
+$Value    = "NoAutorun"
+$BackupKey = "HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-CC-000185"
+
+switch ($Action) {
+    "Check" {
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($null -eq $current) {
+            Write-Output "Setting not found. Default may be insecure."
+        } else {
+            Write-Output "$Value is set to $($current.$Value)"
+        }
+    }
+
+    "Remediate" {
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($current) {
+            New-Item -Path $BackupKey -Force | Out-Null
+            New-ItemProperty -Path $BackupKey -Name $Value -Value $current.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Backup saved: $BackupKey\$Value = $($current.$Value)"
+        }
+
+        New-ItemProperty -Path $RegPath -Name $Value -Value 1 -PropertyType DWORD -Force | Out-Null
+        Write-Output "Remediation applied: $Value set to 1"
+    }
+
+    "Rollback" {
+        $backup = Get-ItemProperty -Path $BackupKey -Name $Value -ErrorAction SilentlyContinue
+        if ($backup) {
+            New-ItemProperty -Path $RegPath -Name $Value -Value $backup.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Rolled back: $Value restored to $($backup.$Value)"
+        } else {
+            Write-Output "No backup found for rollback."
+        }
+    }
+}
+
+Example Usage
+
+Check current setting
+
+.\Set-WN10-CC-000185.ps1 -Action Check
+
+
+Remediate
+
+.\Set-WN10-CC-000185.ps1 -Action Remediate
+
+
+Rollback
+
+.\Set-WN10-CC-000185.ps1 -Action Rollback
+
+One-Liner PowerShell Commands
+
+Check
+
+Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name NoAutorun
+
+
+Remediate
+
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name NoAutorun -Value 1
+
+
+Rollback
+
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name NoAu
