@@ -44,7 +44,20 @@ Here are the commands:
 
 Save this script as Set-WN10-CC-000327.ps1:
 
-
+<# 
+.SYNOPSIS
+  This PowerShell script ensures that PowerShell is enabled, turning on transcription that will record detailed information from the processing of PowerShell commands and scripts.
+.NOTES
+  Author          : Peter Kure
+  LinkedIn        : linkedin.com/in/peter-kure
+  Github          : github.com/pkure
+  Date Created    : 8/16/2025
+  Last Modified   : 8/16/2025
+  Version         : 1.0
+  CVEs            : n/a
+  Plugin IDs      : n/a
+  STIG-ID         : WN10-CC-000327
+#>
 # Set-WN10-CC-000327.ps1 (PowerShell 5.1 compatible)
 [CmdletBinding()]
 param(
