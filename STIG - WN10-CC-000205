@@ -66,6 +66,17 @@ ________________________________________________________________________________
   Ensures AllowTelemetry is set to 0 (Security) or 1 (Basic), never 3 (Full).
   Creates a backup before changes for rollback.
 
+.NOTES
+  Author          : Peter Kure
+  LinkedIn        : linkedin.com/in/peter-kure
+  Github          : github.com/pkure
+  Date Created    : 8/25/2025
+  Last Modified   : 8/25/2025
+  Version         : 1.0
+  CVEs            : n/a
+  Plugin IDs      : n/a
+  STIG-ID         : WN10-CC-000205
+
 .PARAMETER Action
   "Check"     - Display current setting
   "Remediate" - Apply STIG-compliant value (defaults to Basic = 1)
