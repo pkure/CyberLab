@@ -1,0 +1,150 @@
+WN10-AC-000005 – Windows 10 Account Lockout Duration Must Be 15 Minutes or Greater
+Overview
+
+Account lockout duration determines how long an account remains locked after exceeding the allowed number of failed login attempts. Setting this value to less than 15 minutes could allow attackers to attempt repeated password guessing without meaningful delay.
+
+STIG Requirement
+
+WN10-AC-000005: Windows 10 account lockout duration must be configured to 15 minutes or greater.
+
+Severity: Medium
+
+Discussion: A too-short lockout period may allow brute-force attempts; too long can result in denial-of-service risks. STIG requires a minimum of 15 minutes to balance usability and security.
+
+Fix Text
+
+Configure the policy:
+
+Navigate in Group Policy:
+Computer Configuration > Windows Settings > Security Settings > Account Policies > Account Lockout Policy > Account lockout duration
+
+Set to: 15 minutes or greater
+
+Registry equivalent:
+
+Key:   HKLM\SAM\Domains\Account
+Value: LockoutDuration
+Type:  REG_BINARY
+Data:  Represented in 100-nanosecond intervals (negative value, e.g., -900 seconds)
+
+
+*** Direct registry edits are risky for this — safer to use net accounts or secedit.***
+
+Manual Fix via CLI
+# Set lockout duration to 15 minutes
+net accounts /lockoutduration:15
+
+# Verify current account policy
+net accounts
+
+
+Rollback (example, insecure setting = 5 minutes):
+
+net accounts /lockoutduration:5
+
+PowerShell Script (Check / Remediate / Rollback)
+
+Save as Set-WN10-AC-000005.ps1
+
+<#
+.SYNOPSIS
+  Enforce DISA STIG WN10-AC-000005 (Account lockout duration must be 15 minutes or greater).
+
+.DESCRIPTION
+  Ensures the account lockout duration is set to at least 15 minutes.
+  Uses "net accounts" to configure the setting.
+  Creates a backup of the current duration for rollback.
+
+.NOTES
+  Author          : Peter Kure
+  LinkedIn        : linkedin.com/in/peter-kure
+  Github          : github.com/pkure
+  Date Created    : 8/26/2025
+  Last Modified   : 8/26/2025
+  Version         : 1.0
+  CVEs            : n/a
+  Plugin IDs      : n/a
+  STIG-ID         : WN10-AC-000005
+
+.PARAMETER Action
+  "Check"     - Display current lockout duration
+  "Remediate" - Apply compliant value (15 minutes minimum)
+  "Rollback"  - Restore from backup if available
+
+.EXAMPLE
+  .\Set-WN10-AC-000005.ps1 -Action Check
+#>
+
+param(
+    [Parameter(Mandatory=$true)]
+    [ValidateSet("Check","Remediate","Rollback")]
+    [string]$Action
+)
+
+$BackupKey = "HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-AC-000005"
+
+switch ($Action) {
+    "Check" {
+        $output = net accounts | Select-String "Lockout duration"
+        Write-Output "Current $output"
+    }
+
+    "Remediate" {
+        # Backup current duration
+        $current = (net accounts | Select-String "Lockout duration").ToString().Split(":")[1].Trim().Split(" ")[0]
+        if ($current) {
+            New-Item -Path $BackupKey -Force | Out-Null
+            New-ItemProperty -Path $BackupKey -Name "LockoutDuration" -Value $current -PropertyType String -Force | Out-Null
+            Write-Output "Backup saved: LockoutDuration = $current minutes"
+        }
+
+        # Apply compliant duration
+        net accounts /lockoutduration:15 | Out-Null
+        Write-Output "Remediation applied: LockoutDuration set to 15 minutes"
+    }
+
+    "Rollback" {
+        $backup = Get-ItemProperty -Path $BackupKey -Name "LockoutDuration" -ErrorAction SilentlyContinue
+        if ($backup) {
+            net accounts /lockoutduration:$($backup.LockoutDuration) | Out-Null
+            Write-Output "Rolled back: LockoutDuration restored to $($backup.LockoutDuration) minutes"
+        } else {
+            Write-Output "No backup found for rollback."
+        }
+    }
+}
+
+_____________________________________________________________
+
+
+Example Usage
+
+Check current setting
+
+.\Set-WN10-AC-000005.ps1 -Action Check
+
+
+Remediate (set to 15 minutes)
+
+.\Set-WN10-AC-000005.ps1 -Action Remediate
+
+
+Rollback
+
+.\Set-WN10-AC-000005.ps1 -Action Rollback
+
+One-Liner PowerShell Commands
+
+Check
+
+net accounts
+
+
+Remediate
+
+net accounts /lockoutduration:15
+
+
+Rollback (example insecure setting = 5 minutes)
+
+net accounts /lockoutduration:5
