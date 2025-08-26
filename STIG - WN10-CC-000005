@@ -61,7 +61,7 @@ ___________________________________________________________________________
   Github          : github.com/pkure
   Date Created    : 8/26/2025
   Last Modified   : 8/26/2025
-  Version         : 1.0
+  Version         : 1.1
   CVEs            : n/a
   Plugin IDs      : n/a
   STIG-ID         : WN10-CC-000005
@@ -81,8 +81,9 @@ param(
     [string]$Action
 )
 
-$RegPath  = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization"
-$Value    = "NoLockScreenCamera"
+$RegPath   = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization"
+$ParentKey = "HKLM:\SOFTWARE\Policies\Microsoft\Windows"
+$Value     = "NoLockScreenCamera"
 $BackupKey = "HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-CC-000005"
 
 switch ($Action) {
@@ -96,6 +97,12 @@ switch ($Action) {
     }
 
     "Remediate" {
+        # Make sure the Personalization key exists
+        if (-not (Test-Path $RegPath)) {
+            New-Item -Path $ParentKey -Name "Personalization" -Force | Out-Null
+        }
+
+        # Backup current value if present
         $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
         if ($current) {
             New-Item -Path $BackupKey -Force | Out-Null
@@ -103,11 +110,16 @@ switch ($Action) {
             Write-Output "Backup saved: $BackupKey\$Value = $($current.$Value)"
         }
 
+        # Apply compliant setting
         New-ItemProperty -Path $RegPath -Name $Value -Value 1 -PropertyType DWORD -Force | Out-Null
         Write-Output "Remediation applied: $Value set to 1"
     }
 
     "Rollback" {
+        if (-not (Test-Path $RegPath)) {
+            New-Item -Path $ParentKey -Name "Personalization" -Force | Out-Null
+        }
+
         $backup = Get-ItemProperty -Path $BackupKey -Name $Value -ErrorAction SilentlyContinue
         if ($backup) {
             New-ItemProperty -Path $RegPath -Name $Value -Value $backup.$Value -PropertyType DWORD -Force | Out-Null
@@ -117,7 +129,6 @@ switch ($Action) {
         }
     }
 }
-
 
 ___________________________________________________________________________
 
