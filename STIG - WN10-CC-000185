@@ -42,6 +42,9 @@ PowerShell Script (Check / Remediate / Rollback)
 
 Save as Set-WN10-CC-000185.ps1
 
+______________________________________________________________________________
+
+
 <#
 .SYNOPSIS
   Enforce DISA STIG WN10-CC-000185 (Default autorun behavior must prevent autorun commands).
@@ -113,6 +116,10 @@ switch ($Action) {
         }
     }
 }
+
+
+_____________________________________________________________________
+
 
 Example Usage
 
