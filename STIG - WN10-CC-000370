@@ -55,6 +55,17 @@ ___________________________________________________________________________
   Ensures AllowDomainPINLogon is set to 0 under
   HKLM:\SOFTWARE\Policies\Microsoft\Windows\System.
   Creates a backup before changes for rollback.
+
+.NOTES
+  Author          : Peter Kure
+  LinkedIn        : linkedin.com/in/peter-kure
+  Github          : github.com/pkure
+  Date Created    : 8/25/2025
+  Last Modified   : 8/25/2025
+  Version         : 1.0
+  CVEs            : n/a
+  Plugin IDs      : n/a
+  STIG-ID         : WN10-CC-000370
 #>
 
 param(
