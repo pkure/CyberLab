@@ -40,35 +40,6 @@ Changes apply to new sessions; a logoff/restart or policy refresh helps ensure i
 
 
 
-
-
-
-
-__________________________________________________________
-
-
-Script: Set-WN10-CC-000190.ps1
-
-Modes: -CheckOnly, -Enforce, -Rollback
-
-Backup: One-time backup stored at
-HKLM:\SOFTWARE\TitanConsultancy\STIGBackups\WN10-CC-000190\PreviousValue
-
-Exit codes: 0=compliant/ok, 1=noncompliant, 2=no action
-
-Requires elevated PowerShell (Run as Administrator). Compatible with PowerShell 5.1+.
-
-
-
-
-Save this script as: 'Set-WN10-CC-000190.ps1'
-
-
-___________________________________________________________
-
-
-Script: Set-WN10-CC-000190.ps1
-
 Modes: -CheckOnly, -Enforce, -Rollback
 
 Backup (LogN Pacific path):
@@ -78,6 +49,8 @@ Exit codes: 0 = compliant/ok, 1 = noncompliant, 2 = no action
 
 Requires: Elevated PowerShell (Run as Administrator), PowerShell 5.1+
 
+
+Save this script as: 'Set-WN10-CC-000190.ps1'
 
 _______________________________________________________________
 
