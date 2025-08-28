@@ -1,0 +1,156 @@
+WN10-CC-000210 – Windows Defender SmartScreen for Explorer Must Be Enabled
+Overview
+
+Windows Defender SmartScreen helps protect systems by checking downloaded files and web content against Microsoft’s reputation services. If SmartScreen is disabled, users could inadvertently run malicious executables or be redirected to phishing sites without warning.
+
+STIG Requirement
+
+WN10-CC-000210: The Windows Defender SmartScreen for Explorer must be enabled.
+
+Severity: Medium
+
+Discussion: SmartScreen filters files and URLs accessed through File Explorer, providing warnings or blocking untrusted content. Disabling it reduces protection against malware and phishing campaigns.
+
+Fix Text
+
+Configure the policy:
+
+Navigate in Group Policy:
+Computer Configuration > Administrative Templates > Windows Components > File Explorer > Configure Windows Defender SmartScreen
+
+Set to: Enabled → “Warn and prevent bypass”
+
+Registry equivalent:
+
+Key:   HKLM\SOFTWARE\Policies\Microsoft\Windows\System
+Value: EnableSmartScreen (DWORD)
+Data:  1
+
+Manual Registry Fix
+# Enable SmartScreen
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v EnableSmartScreen /t REG_DWORD /d 1 /f
+
+# Verify
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v EnableSmartScreen
+
+
+Rollback (not recommended – disables SmartScreen):
+
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v EnableSmartScreen /t REG_DWORD /d 0 /f
+
+PowerShell Script (Check / Remediate / Rollback)
+
+Save as Set-WN10-CC-000210.ps1
+
+<#
+.SYNOPSIS
+  Enforce DISA STIG WN10-CC-000210 (Windows Defender SmartScreen for Explorer must be enabled).
+
+.DESCRIPTION
+  Ensures EnableSmartScreen is set to 1 under
+  HKLM:\SOFTWARE\Policies\Microsoft\Windows\System.
+  Creates a backup before changes for rollback.
+
+.NOTES
+  Author          : Peter Kure
+  LinkedIn        : linkedin.com/in/peter-kure
+  Github          : github.com/pkure
+  Date Created    : 8/28/2025
+  Last Modified   : 8/28/2025
+  Version         : 1.0
+  CVEs            : n/a
+  Plugin IDs      : n/a
+  STIG-ID         : WN10-CC-000210
+
+.PARAMETER Action
+  "Check"     - Display current setting
+  "Remediate" - Apply STIG-compliant value
+  "Rollback"  - Restore from backup if available
+
+.EXAMPLE
+  .\Set-WN10-CC-000210.ps1 -Action Check
+#>
+
+param(
+    [Parameter(Mandatory=$true)]
+    [ValidateSet("Check","Remediate","Rollback")]
+    [string]$Action
+)
+
+$RegPath   = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System"
+$Value     = "EnableSmartScreen"
+$BackupKey = "HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-CC-000210"
+
+switch ($Action) {
+    "Check" {
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($null -eq $current) {
+            Write-Output "Setting not found. Default may be insecure."
+        } else {
+            Write-Output "$Value is set to $($current.$Value)"
+        }
+    }
+
+    "Remediate" {
+        # Backup current value if present
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($current) {
+            New-Item -Path $BackupKey -Force | Out-Null
+            New-ItemProperty -Path $BackupKey -Name $Value -Value $current.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Backup saved: $BackupKey\$Value = $($current.$Value)"
+        }
+
+        # Apply compliant value
+        if (-not (Test-Path $RegPath)) {
+            New-Item -Path (Split-Path $RegPath) -Name (Split-Path $RegPath -Leaf) -Force | Out-Null
+        }
+        New-ItemProperty -Path $RegPath -Name $Value -Value 1 -PropertyType DWORD -Force | Out-Null
+        Write-Output "Remediation applied: $Value set to 1"
+    }
+
+    "Rollback" {
+        if (-not (Test-Path $RegPath)) {
+            New-Item -Path (Split-Path $RegPath) -Name (Split-Path $RegPath -Leaf) -Force | Out-Null
+        }
+
+        $backup = Get-ItemProperty -Path $BackupKey -Name $Value -ErrorAction SilentlyContinue
+        if ($backup) {
+            New-ItemProperty -Path $RegPath -Name $Value -Value $backup.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Rolled back: $Value restored to $($backup.$Value)"
+        } else {
+            Write-Output "No backup found for rollback."
+        }
+    }
+}
+
+Example Usage
+
+Check current setting
+
+.\Set-WN10-CC-000210.ps1 -Action Check
+
+
+Remediate (enable SmartScreen)
+
+.\Set-WN10-CC-000210.ps1 -Action Remediate
+
+
+Rollback
+
+.\Set-WN10-CC-000210.ps1 -Action Rollback
+
+One-Liner PowerShell Commands
+
+Check
+
+Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name EnableSmartScreen
+
+
+Remediate
+
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name EnableSmartScreen -Value 1
+
+
+Rollback
+
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name EnableSmartScreen -Value 0
