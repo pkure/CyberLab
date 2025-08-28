@@ -1,0 +1,165 @@
+WN10-CC-000197 – Microsoft Consumer Experiences Must Be Turned Off
+Overview
+
+Windows 10 includes “Microsoft consumer experiences,” which push apps, content, and advertisements to end users. In managed or enterprise environments, these are unnecessary and introduce potential distractions or vulnerabilities. This STIG requires the feature to be turned off.
+
+STIG Requirement
+
+WN10-CC-000197: Microsoft consumer experiences must be turned off.
+
+Severity: Medium
+
+Discussion: Consumer experiences deliver Microsoft-curated apps and services, some of which may not be approved for enterprise use. Disabling them ensures users are not exposed to unapproved software or advertisements that may reduce security posture.
+
+Fix Text
+
+Configure the policy:
+
+Navigate in Group Policy:
+Computer Configuration > Administrative Templates > Windows Components > Cloud Content > Turn off Microsoft consumer experiences
+
+Set to: Enabled
+
+Registry equivalent:
+
+Key:   HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent
+Value: DisableConsumerFeatures (DWORD)
+Data:  1
+
+Manual Registry Fix
+# Disable consumer experiences
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent" /v DisableConsumerFeatures /t REG_DWORD /d 1 /f
+
+# Verify
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent" /v DisableConsumerFeatures
+
+
+Rollback (not recommended – re-enables consumer experiences):
+
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent" /v DisableConsumerFeatures /t REG_DWORD /d 0 /f
+
+PowerShell Script (Check / Remediate / Rollback)
+
+Save as Set-WN10-CC-000197.ps1
+
+_____________________________________________________________________________
+
+
+<#
+.SYNOPSIS
+  Enforce DISA STIG WN10-CC-000197 (Microsoft consumer experiences must be turned off).
+
+.DESCRIPTION
+  Ensures DisableConsumerFeatures is set to 1 under
+  HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent.
+  Creates a backup before changes for rollback.
+
+.NOTES
+  Author          : Peter Kure
+  LinkedIn        : linkedin.com/in/peter-kure
+  Github          : github.com/pkure
+  Date Created    : 8/28/2025
+  Last Modified   : 8/28/2025
+  Version         : 1.0
+  CVEs            : n/a
+  Plugin IDs      : n/a
+  STIG-ID         : WN10-CC-000197
+
+.PARAMETER Action
+  "Check"     - Display current setting
+  "Remediate" - Apply STIG-compliant value
+  "Rollback"  - Restore from backup if available
+
+.EXAMPLE
+  .\Set-WN10-CC-000197.ps1 -Action Check
+#>
+
+param(
+    [Parameter(Mandatory=$true)]
+    [ValidateSet("Check","Remediate","Rollback")]
+    [string]$Action
+)
+
+$RegPath   = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent"
+$ParentKey = "HKLM:\SOFTWARE\Policies\Microsoft\Windows"
+$Value     = "DisableConsumerFeatures"
+$BackupKey = "HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-CC-000197"
+
+switch ($Action) {
+    "Check" {
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($null -eq $current) {
+            Write-Output "Setting not found. Default may be insecure."
+        } else {
+            Write-Output "$Value is set to $($current.$Value)"
+        }
+    }
+
+    "Remediate" {
+        # Ensure key exists
+        if (-not (Test-Path $RegPath)) {
+            New-Item -Path $ParentKey -Name "CloudContent" -Force | Out-Null
+        }
+
+        # Backup if present
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($current) {
+            New-Item -Path $BackupKey -Force | Out-Null
+            New-ItemProperty -Path $BackupKey -Name $Value -Value $current.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Backup saved: $BackupKey\$Value = $($current.$Value)"
+        }
+
+        # Apply compliant value
+        New-ItemProperty -Path $RegPath -Name $Value -Value 1 -PropertyType DWORD -Force | Out-Null
+        Write-Output "Remediation applied: $Value set to 1 (consumer experiences disabled)"
+    }
+
+    "Rollback" {
+        if (-not (Test-Path $RegPath)) {
+            New-Item -Path $ParentKey -Name "CloudContent" -Force | Out-Null
+        }
+
+        $backup = Get-ItemProperty -Path $BackupKey -Name $Value -ErrorAction SilentlyContinue
+        if ($backup) {
+            New-ItemProperty -Path $RegPath -Name $Value -Value $backup.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Rolled back: $Value restored to $($backup.$Value)"
+        } else {
+            Write-Output "No backup found for rollback."
+        }
+    }
+}
+
+
+_____________________________________________________________________________
+
+Example Usage
+
+Check current setting
+
+.\Set-WN10-CC-000197.ps1 -Action Check
+
+
+Remediate (disable consumer experiences)
+
+.\Set-WN10-CC-000197.ps1 -Action Remediate
+
+
+Rollback
+
+.\Set-WN10-CC-000197.ps1 -Action Rollback
+
+One-Liner PowerShell Commands
+
+Check
+
+Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" -Name DisableConsumerFeatures
+
+
+Remediate
+
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" -Name DisableConsumerFeatures -Value 1
+
+
+Rollback
+
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" -Name DisableConsumerFeatures -Valu
