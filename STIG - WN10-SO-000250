@@ -1,0 +1,164 @@
+WN10-SO-000250 – UAC Must Prompt Administrators for Consent on the Secure Desktop
+Overview
+
+User Account Control (UAC) enforces privilege elevation prompts. This STIG requires that administrators are prompted for consent on the secure desktop to prevent elevation attempts from being spoofed or hidden by malicious applications.
+
+STIG Requirement
+
+WN10-SO-000250: User Account Control must, at minimum, prompt administrators for consent on the secure desktop.
+
+Severity: High
+
+Discussion: Without UAC prompting on the secure desktop, malware could manipulate or obscure elevation requests. The secure desktop isolates the prompt from other processes, ensuring that administrator approval is genuine and not tampered with.
+
+Fix Text
+
+Configure the policy:
+
+Navigate in Group Policy:
+Computer Configuration > Windows Settings > Security Settings > Local Policies > Security Options > User Account Control: Behavior of the elevation prompt for administrators in Admin Approval Mode
+
+Set to: Prompt for consent on the secure desktop (value 2)
+
+Registry equivalent:
+
+Key:   HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+Value: ConsentPromptBehaviorAdmin (DWORD)
+Data:  2
+
+Manual Registry Fix
+# Set UAC prompt to "Prompt for consent on secure desktop"
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v ConsentPromptBehaviorAdmin /t REG_DWORD /d 2 /f
+
+# Verify
+reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v ConsentPromptBehaviorAdmin
+
+
+Rollback (not recommended – insecure setting = 0, no prompt):
+
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v ConsentPromptBehaviorAdmin /t REG_DWORD /d 0 /f
+
+PowerShell Script (Check / Remediate / Rollback)
+
+Save as Set-WN10-SO-000250.ps1
+
+__________________________________________________________________________
+
+
+
+<#
+.SYNOPSIS
+  Enforce DISA STIG WN10-SO-000250 (UAC must prompt administrators for consent on the secure desktop).
+
+.DESCRIPTION
+  Ensures ConsentPromptBehaviorAdmin is set to 2 under
+  HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System.
+  Creates a backup before changes for rollback.
+
+.NOTES
+  Author          : Peter Kure
+  LinkedIn        : linkedin.com/in/peter-kure
+  Github          : github.com/pkure
+  Date Created    : 8/28/2025
+  Last Modified   : 8/28/2025
+  Version         : 1.0
+  CVEs            : n/a
+  Plugin IDs      : n/a
+  STIG-ID         : WN10-SO-000250
+
+.PARAMETER Action
+  "Check"     - Display current setting
+  "Remediate" - Apply STIG-compliant value
+  "Rollback"  - Restore from backup if available
+
+.EXAMPLE
+  .\Set-WN10-SO-000250.ps1 -Action Check
+#>
+
+param(
+    [Parameter(Mandatory=$true)]
+    [ValidateSet("Check","Remediate","Rollback")]
+    [string]$Action
+)
+
+$RegPath   = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+$Value     = "ConsentPromptBehaviorAdmin"
+$BackupKey = "HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-SO-000250"
+
+switch ($Action) {
+    "Check" {
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($null -eq $current) {
+            Write-Output "Setting not found. Default may be insecure."
+        } else {
+            Write-Output "$Value is set to $($current.$Value)"
+        }
+    }
+
+    "Remediate" {
+        # Backup current value if present
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($current) {
+            New-Item -Path $BackupKey -Force | Out-Null
+            New-ItemProperty -Path $BackupKey -Name $Value -Value $current.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Backup saved: $BackupKey\$Value = $($current.$Value)"
+        }
+
+        # Apply compliant value
+        if (-not (Test-Path $RegPath)) {
+            New-Item -Path (Split-Path $RegPath) -Name (Split-Path $RegPath -Leaf) -Force | Out-Null
+        }
+        New-ItemProperty -Path $RegPath -Name $Value -Value 2 -PropertyType DWORD -Force | Out-Null
+        Write-Output "Remediation applied: $Value set to 2 (Prompt for consent on secure desktop)"
+    }
+
+    "Rollback" {
+        if (-not (Test-Path $RegPath)) {
+            New-Item -Path (Split-Path $RegPath) -Name (Split-Path $RegPath -Leaf) -Force | Out-Null
+        }
+
+        $backup = Get-ItemProperty -Path $BackupKey -Name $Value -ErrorAction SilentlyContinue
+        if ($backup) {
+            New-ItemProperty -Path $RegPath -Name $Value -Value $backup.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Rolled back: $Value restored to $($backup.$Value)"
+        } else {
+            Write-Output "No backup found for rollback."
+        }
+    }
+}
+
+
+__________________________________________________________________________
+
+
+Example Usage
+
+Check current setting
+
+.\Set-WN10-SO-000250.ps1 -Action Check
+
+
+Remediate (enforce secure desktop consent prompt)
+
+.\Set-WN10-SO-000250.ps1 -Action Remediate
+
+
+Rollback
+
+.\Set-WN10-SO-000250.ps1 -Action Rollback
+
+One-Liner PowerShell Commands
+
+Check
+
+Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name ConsentPromptBehaviorAdmin
+
+
+Remediate
+
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name ConsentPromptBehaviorAdmin -Value 2
+
+
+Rollback (insecure example)
+
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name ConsentPromptBehavi
