@@ -1,0 +1,162 @@
+WN10-SO-000080 – The Windows Dialog Box Title for the Legal Banner Must Be Configured
+Overview
+
+Windows can display a legal notice before logon. This control requires that the dialog box title for the legal banner be explicitly configured, to inform users of the system’s terms of use. Without it, users may not receive a clear indication that access implies consent.
+
+STIG Requirement
+
+WN10-SO-000080: The Windows dialog box title for the legal banner must be configured.
+
+Severity: Medium
+
+Discussion: Legal banners help establish user awareness and legal standing for monitoring. Configuring the banner title provides context to the message body, clarifies intent, and makes the warning more prominent.
+
+Fix Text
+
+Configure the policy:
+
+Navigate in Group Policy:
+Computer Configuration > Windows Settings > Security Settings > Local Policies > Security Options > Interactive logon: Message title for users attempting to log on
+
+Set to: An organization-approved banner title string (e.g., “NOTICE – Authorized Use Only”).
+
+Registry equivalent:
+
+Key:   HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+Value: LegalNoticeCaption (REG_SZ)
+Data:  <custom title string>
+
+Manual Registry Fix
+# Set legal notice title
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v LegalNoticeCaption /t REG_SZ /d "NOTICE - Authorized Use Only" /f
+
+# Verify
+reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v LegalNoticeCaption
+
+
+Rollback (removes the banner title – not recommended):
+
+reg delete "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v LegalNoticeCaption /f
+
+PowerShell Script (Check / Remediate / Rollback)
+
+Save as Set-WN10-SO-000080.ps1
+
+__________________________________________________________________________________
+
+<#
+.SYNOPSIS
+  Enforce DISA STIG WN10-SO-000080 (The Windows dialog box title for the legal banner must be configured).
+
+.DESCRIPTION
+  Ensures LegalNoticeCaption is configured under
+  HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System.
+  Creates a backup before changes for rollback.
+
+.NOTES
+  Author          : Peter Kure
+  LinkedIn        : linkedin.com/in/peter-kure
+  Github          : github.com/pkure
+  Date Created    : 8/28/2025
+  Last Modified   : 8/28/2025
+  Version         : 1.0
+  CVEs            : n/a
+  Plugin IDs      : n/a
+  STIG-ID         : WN10-SO-000080
+
+.PARAMETER Action
+  "Check"     - Display current setting
+  "Remediate" - Apply STIG-compliant value
+  "Rollback"  - Restore from backup if available
+
+.EXAMPLE
+  .\Set-WN10-SO-000080.ps1 -Action Check
+#>
+
+param(
+    [Parameter(Mandatory=$true)]
+    [ValidateSet("Check","Remediate","Rollback")]
+    [string]$Action,
+
+    [string]$BannerTitle = "NOTICE - Authorized Use Only"
+)
+
+$RegPath   = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+$Value     = "LegalNoticeCaption"
+$BackupKey = "HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-SO-000080"
+
+switch ($Action) {
+    "Check" {
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($null -eq $current) {
+            Write-Output "LegalNoticeCaption not set. Default may be insecure."
+        } else {
+            Write-Output "LegalNoticeCaption is currently: $($current.$Value)"
+        }
+    }
+
+    "Remediate" {
+        # Backup if present
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($current) {
+            New-Item -Path $BackupKey -Force | Out-Null
+            New-ItemProperty -Path $BackupKey -Name $Value -Value $current.$Value -PropertyType String -Force | Out-Null
+            Write-Output "Backup saved: $BackupKey\$Value = $($current.$Value)"
+        }
+
+        # Apply compliant banner title
+        New-ItemProperty -Path $RegPath -Name $Value -Value $BannerTitle -PropertyType String -Force | Out-Null
+        Write-Output "Remediation applied: $Value set to '$BannerTitle'"
+    }
+
+    "Rollback" {
+        $backup = Get-ItemProperty -Path $BackupKey -Name $Value -ErrorAction SilentlyContinue
+        if ($backup) {
+            New-ItemProperty -Path $RegPath -Name $Value -Value $backup.$Value -PropertyType String -Force | Out-Null
+            Write-Output "Rolled back: $Value restored to '$($backup.$Value)'"
+        } else {
+            Write-Output "No backup found for rollback."
+        }
+    }
+}
+
+
+__________________________________________________________________________________
+
+
+Example Usage
+
+Check current setting
+
+.\Set-WN10-SO-000080.ps1 -Action Check
+
+
+Remediate (set default banner title)
+
+.\Set-WN10-SO-000080.ps1 -Action Remediate
+
+
+Remediate with custom title
+
+.\Set-WN10-SO-000080.ps1 -Action Remediate -BannerTitle "ACME Corp - Authorized Use Only"
+
+
+Rollback
+
+.\Set-WN10-SO-000080.ps1 -Action Rollback
+
+One-Liner PowerShell Commands
+
+Check
+
+Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name LegalNoticeCaption
+
+
+Remediate (default string)
+
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name LegalNoticeCaption -Value "NOTICE - Authorized Use Only"
+
+
+Rollback (delete value)
+
+Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name LegalNoticeCaption
