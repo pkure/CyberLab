@@ -42,6 +42,10 @@ PowerShell Script (Check / Remediate / Rollback)
 
 Save as Set-WN10-CC-000210.ps1
 
+
+________________________________________________________________________
+
+
 <#
 .SYNOPSIS
   Enforce DISA STIG WN10-CC-000210 (Windows Defender SmartScreen for Explorer must be enabled).
@@ -122,6 +126,10 @@ switch ($Action) {
         }
     }
 }
+
+
+________________________________________________________________________
+
 
 Example Usage
 
