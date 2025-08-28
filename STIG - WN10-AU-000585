@@ -1,0 +1,167 @@
+WN10-AU-000585 – Command Line Process Auditing Events Must Be Enabled for Failures
+Overview
+
+Windows can log command-line arguments used when processes are created. This provides critical visibility for detecting malicious scripts, LOLBins, or attacker tools. This STIG requires command line process auditing events to be enabled, at least for failures, to ensure suspicious or unauthorized process launches are captured.
+
+STIG Requirement
+
+WN10-AU-000585: Windows 10 must have command line process auditing events enabled for failures.
+
+Severity: Medium
+
+Discussion: Without command line auditing, defenders cannot see the exact commands attackers run. Enabling this policy ensures failures (and optionally successes) are logged to the Security event log, improving detection of exploitation attempts and unauthorized software use.
+
+Fix Text
+
+Configure the policy:
+
+Navigate in Group Policy:
+Computer Configuration > Administrative Templates > System > Audit Process Creation > Include command line in process creation events
+
+Set to: Enabled
+
+Additionally, ensure Audit Policy is set:
+
+Computer Configuration > Windows Settings > Security Settings > Advanced Audit Policy Configuration > System Audit Policies > Detailed Tracking > Audit Process Creation → Configure for Failure
+
+Registry equivalent:
+
+Key:   HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit
+Value: ProcessCreationIncludeCmdLine_Enabled (DWORD)
+Data:  1
+
+Manual Registry Fix
+# Enable command line logging
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit" /v ProcessCreationIncludeCmdLine_Enabled /t REG_DWORD /d 1 /f
+
+# Verify
+reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit" /v ProcessCreationIncludeCmdLine_Enabled
+
+
+Rollback (not recommended – disables logging):
+
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit" /v ProcessCreationIncludeCmdLine_Enabled /t REG_DWORD /d 0 /f
+
+PowerShell Script (Check / Remediate / Rollback)
+
+Save as Set-WN10-AU-000585.ps1
+
+_____________________________________________________________________________________________
+
+<#
+.SYNOPSIS
+  Enforce DISA STIG WN10-AU-000585 (Command line process auditing events must be enabled for failures).
+
+.DESCRIPTION
+  Ensures ProcessCreationIncludeCmdLine_Enabled is set to 1 under
+  HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit.
+  Creates a backup before changes for rollback.
+
+.NOTES
+  Author          : Peter Kure
+  LinkedIn        : linkedin.com/in/peter-kure
+  Github          : github.com/pkure
+  Date Created    : 8/28/2025
+  Last Modified   : 8/28/2025
+  Version         : 1.0
+  CVEs            : n/a
+  Plugin IDs      : n/a
+  STIG-ID         : WN10-AU-000585
+
+.PARAMETER Action
+  "Check"     - Display current setting
+  "Remediate" - Apply STIG-compliant value
+  "Rollback"  - Restore from backup if available
+
+.EXAMPLE
+  .\Set-WN10-AU-000585.ps1 -Action Check
+#>
+
+param(
+    [Parameter(Mandatory=$true)]
+    [ValidateSet("Check","Remediate","Rollback")]
+    [string]$Action
+)
+
+$RegPath   = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit"
+$ParentKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+$Value     = "ProcessCreationIncludeCmdLine_Enabled"
+$BackupKey = "HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-AU-000585"
+
+switch ($Action) {
+    "Check" {
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($null -eq $current) {
+            Write-Output "Setting not found. Default may be insecure."
+        } else {
+            Write-Output "$Value is set to $($current.$Value)"
+        }
+    }
+
+    "Remediate" {
+        # Make sure the Audit subkey exists
+        if (-not (Test-Path $RegPath)) {
+            New-Item -Path $ParentKey -Name "Audit" -Force | Out-Null
+        }
+
+        # Backup if present
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($current) {
+            New-Item -Path $BackupKey -Force | Out-Null
+            New-ItemProperty -Path $BackupKey -Name $Value -Value $current.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Backup saved: $BackupKey\$Value = $($current.$Value)"
+        }
+
+        # Apply fix
+        New-ItemProperty -Path $RegPath -Name $Value -Value 1 -PropertyType DWORD -Force | Out-Null
+        Write-Output "Remediation applied: $Value set to 1"
+    }
+
+    "Rollback" {
+        if (-not (Test-Path $RegPath)) {
+            New-Item -Path $ParentKey -Name "Audit" -Force | Out-Null
+        }
+
+        $backup = Get-ItemProperty -Path $BackupKey -Name $Value -ErrorAction SilentlyContinue
+        if ($backup) {
+            New-ItemProperty -Path $RegPath -Name $Value -Value $backup.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Rolled back: $Value restored to $($backup.$Value)"
+        } else {
+            Write-Output "No backup found for rollback."
+        }
+    }
+}
+
+_____________________________________________________________________________________________
+
+Example Usage
+
+Check current setting
+
+.\Set-WN10-AU-000585.ps1 -Action Check
+
+
+Remediate
+
+.\Set-WN10-AU-000585.ps1 -Action Remediate
+
+
+Rollback
+
+.\Set-WN10-AU-000585.ps1 -Action Rollback
+
+One-Liner PowerShell Commands
+
+Check
+
+Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit" -Name ProcessCreationIncludeCmdLine_Enabled
+
+
+Remediate
+
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit" -Name ProcessCreationIncludeCmdLine_Enabled -Value 1
+
+
+Rollback
+
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit" -Name ProcessCreationIncl
