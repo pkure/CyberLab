@@ -1,7 +1,7 @@
 WN10-CC-000210 – Windows Defender SmartScreen for Explorer Must Be Enabled
 Overview
 
-Windows Defender SmartScreen helps protect systems by checking downloaded files and web content against Microsoft’s reputation services. If SmartScreen is disabled, users could inadvertently run malicious executables or be redirected to phishing sites without warning.
+Windows Defender SmartScreen helps protect users by checking files and URLs accessed through File Explorer against Microsoft’s reputation services. If disabled, malicious content may execute without warning.
 
 STIG Requirement
 
@@ -9,7 +9,7 @@ WN10-CC-000210: The Windows Defender SmartScreen for Explorer must be enabled.
 
 Severity: Medium
 
-Discussion: SmartScreen filters files and URLs accessed through File Explorer, providing warnings or blocking untrusted content. Disabling it reduces protection against malware and phishing campaigns.
+Discussion: SmartScreen filters downloads and untrusted files. Setting it to “Block” ensures suspicious or malicious files cannot be run without explicit admin override.
 
 Fix Text
 
@@ -18,41 +18,43 @@ Configure the policy:
 Navigate in Group Policy:
 Computer Configuration > Administrative Templates > Windows Components > File Explorer > Configure Windows Defender SmartScreen
 
-Set to: Enabled → “Warn and prevent bypass”
+Set to: Enabled → “Warn and prevent bypass” (STIG baseline = "Block").
 
-Registry equivalent:
+Registry equivalents:
 
 Key:   HKLM\SOFTWARE\Policies\Microsoft\Windows\System
-Value: EnableSmartScreen (DWORD)
-Data:  1
+Values:
+  EnableSmartScreen (DWORD)     = 1
+  ShellSmartScreenLevel (REG_SZ) = Block
 
 Manual Registry Fix
-# Enable SmartScreen
+# Enable SmartScreen + block untrusted files
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v EnableSmartScreen /t REG_DWORD /d 1 /f
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v ShellSmartScreenLevel /t REG_SZ /d Block /f
 
 # Verify
 reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v EnableSmartScreen
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v ShellSmartScreenLevel
 
 
 Rollback (not recommended – disables SmartScreen):
 
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v EnableSmartScreen /t REG_DWORD /d 0 /f
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v ShellSmartScreenLevel /f
 
 PowerShell Script (Check / Remediate / Rollback)
 
 Save as Set-WN10-CC-000210.ps1
 
-
-________________________________________________________________________
-
+_______________________________________________________________________
 
 <#
 .SYNOPSIS
   Enforce DISA STIG WN10-CC-000210 (Windows Defender SmartScreen for Explorer must be enabled).
 
 .DESCRIPTION
-  Ensures EnableSmartScreen is set to 1 under
-  HKLM:\SOFTWARE\Policies\Microsoft\Windows\System.
+  Ensures EnableSmartScreen = 1 and ShellSmartScreenLevel = "Block"
+  under HKLM:\SOFTWARE\Policies\Microsoft\Windows\System.
   Creates a backup before changes for rollback.
 
 .NOTES
@@ -61,14 +63,14 @@ ________________________________________________________________________
   Github          : github.com/pkure
   Date Created    : 8/28/2025
   Last Modified   : 8/28/2025
-  Version         : 1.0
+  Version         : 2.0
   CVEs            : n/a
   Plugin IDs      : n/a
   STIG-ID         : WN10-CC-000210
 
 .PARAMETER Action
-  "Check"     - Display current setting
-  "Remediate" - Apply STIG-compliant value
+  "Check"     - Display current settings
+  "Remediate" - Apply STIG-compliant values
   "Rollback"  - Restore from backup if available
 
 .EXAMPLE
@@ -82,34 +84,36 @@ param(
 )
 
 $RegPath   = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System"
-$Value     = "EnableSmartScreen"
+$Values    = @{"EnableSmartScreen"=1;"ShellSmartScreenLevel"="Block"}
 $BackupKey = "HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-CC-000210"
 
 switch ($Action) {
     "Check" {
-        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
-        if ($null -eq $current) {
-            Write-Output "Setting not found. Default may be insecure."
-        } else {
-            Write-Output "$Value is set to $($current.$Value)"
+        foreach ($val in $Values.Keys) {
+            $current = Get-ItemProperty -Path $RegPath -Name $val -ErrorAction SilentlyContinue
+            if ($null -eq $current) {
+                Write-Output "$val not set. Default may be insecure."
+            } else {
+                Write-Output "$val is set to $($current.$val)"
+            }
         }
     }
 
     "Remediate" {
-        # Backup current value if present
-        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
-        if ($current) {
-            New-Item -Path $BackupKey -Force | Out-Null
-            New-ItemProperty -Path $BackupKey -Name $Value -Value $current.$Value -PropertyType DWORD -Force | Out-Null
-            Write-Output "Backup saved: $BackupKey\$Value = $($current.$Value)"
-        }
-
-        # Apply compliant value
         if (-not (Test-Path $RegPath)) {
             New-Item -Path (Split-Path $RegPath) -Name (Split-Path $RegPath -Leaf) -Force | Out-Null
         }
-        New-ItemProperty -Path $RegPath -Name $Value -Value 1 -PropertyType DWORD -Force | Out-Null
-        Write-Output "Remediation applied: $Value set to 1"
+
+        foreach ($val in $Values.Keys) {
+            $current = Get-ItemProperty -Path $RegPath -Name $val -ErrorAction SilentlyContinue
+            if ($current) {
+                New-Item -Path $BackupKey -Force | Out-Null
+                New-ItemProperty -Path $BackupKey -Name $val -Value $current.$val -PropertyType String -Force | Out-Null
+                Write-Output "Backup saved: $BackupKey\$val = $($current.$val)"
+            }
+            New-ItemProperty -Path $RegPath -Name $val -Value $Values[$val] -PropertyType ([string]::IsNullOrEmpty($Values[$val].ToString()) -eq $false -and $Values[$val].GetType().Name -eq "Int32" ? "DWORD" : "String") -Force | Out-Null
+            Write-Output "Remediation applied: $val set to $($Values[$val])"
+        }
     }
 
     "Rollback" {
@@ -117,28 +121,28 @@ switch ($Action) {
             New-Item -Path (Split-Path $RegPath) -Name (Split-Path $RegPath -Leaf) -Force | Out-Null
         }
 
-        $backup = Get-ItemProperty -Path $BackupKey -Name $Value -ErrorAction SilentlyContinue
-        if ($backup) {
-            New-ItemProperty -Path $RegPath -Name $Value -Value $backup.$Value -PropertyType DWORD -Force | Out-Null
-            Write-Output "Rolled back: $Value restored to $($backup.$Value)"
-        } else {
-            Write-Output "No backup found for rollback."
+        foreach ($val in $Values.Keys) {
+            $backup = Get-ItemProperty -Path $BackupKey -Name $val -ErrorAction SilentlyContinue
+            if ($backup) {
+                New-ItemProperty -Path $RegPath -Name $val -Value $backup.$val -PropertyType String -Force | Out-Null
+                Write-Output "Rolled back: $val restored to $($backup.$val)"
+            } else {
+                Write-Output "No backup found for $val rollback."
+            }
         }
     }
 }
 
-
-________________________________________________________________________
-
+_______________________________________________________________________
 
 Example Usage
 
-Check current setting
+Check current settings
 
 .\Set-WN10-CC-000210.ps1 -Action Check
 
 
-Remediate (enable SmartScreen)
+Remediate (enable SmartScreen + Block untrusted)
 
 .\Set-WN10-CC-000210.ps1 -Action Remediate
 
@@ -151,14 +155,17 @@ One-Liner PowerShell Commands
 
 Check
 
-Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name EnableSmartScreen
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v EnableSmartScreen
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v ShellSmartScreenLevel
 
 
 Remediate
 
-Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name EnableSmartScreen -Value 1
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v EnableSmartScreen /t REG_DWORD /d 1 /f
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v ShellSmartScreenLevel /t REG_SZ /d Block /f
 
 
 Rollback
 
-Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name EnableSmartScreen -Value 0
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v EnableSmartScreen /t REG_DWORD /d 0 /f
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v ShellSmartScreenLevel /f
