@@ -20,29 +20,35 @@ Computer Configuration > Administrative Templates > Windows Components > Cloud C
 
 Set to: Enabled
 
-Registry equivalent:
+Registry equivalents (Nessus checks these):
 
 Key:   HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent
-Value: DisableConsumerFeatures (DWORD)
-Data:  1
+Values:
+  DisableConsumerFeatures (DWORD)   = 1
+  DisableWindowsConsumerFeatures    = 1
+  DisableSoftLanding                = 1   (on newer builds)
 
 Manual Registry Fix
 # Disable consumer experiences
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent" /v DisableConsumerFeatures /t REG_DWORD /d 1 /f
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent" /v DisableWindowsConsumerFeatures /t REG_DWORD /d 1 /f
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent" /v DisableSoftLanding /t REG_DWORD /d 1 /f
 
 # Verify
-reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent" /v DisableConsumerFeatures
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent"
 
 
-Rollback (not recommended – re-enables consumer experiences):
+Rollback (not recommended – re-enables consumer features):
 
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent" /v DisableConsumerFeatures /t REG_DWORD /d 0 /f
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent" /v DisableWindowsConsumerFeatures /t REG_DWORD /d 0 /f
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent" /v DisableSoftLanding /t REG_DWORD /d 0 /f
 
 PowerShell Script (Check / Remediate / Rollback)
 
 Save as Set-WN10-CC-000197.ps1
 
-_____________________________________________________________________________
+________________________________________________________
 
 
 <#
@@ -50,8 +56,8 @@ _____________________________________________________________________________
   Enforce DISA STIG WN10-CC-000197 (Microsoft consumer experiences must be turned off).
 
 .DESCRIPTION
-  Ensures DisableConsumerFeatures is set to 1 under
-  HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent.
+  Ensures DisableConsumerFeatures, DisableWindowsConsumerFeatures, and DisableSoftLanding
+  are all set to 1 under HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent.
   Creates a backup before changes for rollback.
 
 .NOTES
@@ -60,14 +66,14 @@ _____________________________________________________________________________
   Github          : github.com/pkure
   Date Created    : 8/28/2025
   Last Modified   : 8/28/2025
-  Version         : 1.0
+  Version         : 2.0
   CVEs            : n/a
   Plugin IDs      : n/a
   STIG-ID         : WN10-CC-000197
 
 .PARAMETER Action
-  "Check"     - Display current setting
-  "Remediate" - Apply STIG-compliant value
+  "Check"     - Display current settings
+  "Remediate" - Apply STIG-compliant values
   "Rollback"  - Restore from backup if available
 
 .EXAMPLE
@@ -82,16 +88,18 @@ param(
 
 $RegPath   = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent"
 $ParentKey = "HKLM:\SOFTWARE\Policies\Microsoft\Windows"
-$Value     = "DisableConsumerFeatures"
+$Values    = @("DisableConsumerFeatures","DisableWindowsConsumerFeatures","DisableSoftLanding")
 $BackupKey = "HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-CC-000197"
 
 switch ($Action) {
     "Check" {
-        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
-        if ($null -eq $current) {
-            Write-Output "Setting not found. Default may be insecure."
-        } else {
-            Write-Output "$Value is set to $($current.$Value)"
+        foreach ($val in $Values) {
+            $current = Get-ItemProperty -Path $RegPath -Name $val -ErrorAction SilentlyContinue
+            if ($null -eq $current) {
+                Write-Output "$val not set. Default may be insecure."
+            } else {
+                Write-Output "$val is set to $($current.$val)"
+            }
         }
     }
 
@@ -101,17 +109,18 @@ switch ($Action) {
             New-Item -Path $ParentKey -Name "CloudContent" -Force | Out-Null
         }
 
-        # Backup if present
-        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
-        if ($current) {
-            New-Item -Path $BackupKey -Force | Out-Null
-            New-ItemProperty -Path $BackupKey -Name $Value -Value $current.$Value -PropertyType DWORD -Force | Out-Null
-            Write-Output "Backup saved: $BackupKey\$Value = $($current.$Value)"
+        foreach ($val in $Values) {
+            # Backup if present
+            $current = Get-ItemProperty -Path $RegPath -Name $val -ErrorAction SilentlyContinue
+            if ($current) {
+                New-Item -Path $BackupKey -Force | Out-Null
+                New-ItemProperty -Path $BackupKey -Name $val -Value $current.$val -PropertyType DWORD -Force | Out-Null
+                Write-Output "Backup saved: $BackupKey\$val = $($current.$val)"
+            }
+            # Apply compliant value
+            New-ItemProperty -Path $RegPath -Name $val -Value 1 -PropertyType DWORD -Force | Out-Null
+            Write-Output "Remediation applied: $val set to 1"
         }
-
-        # Apply compliant value
-        New-ItemProperty -Path $RegPath -Name $Value -Value 1 -PropertyType DWORD -Force | Out-Null
-        Write-Output "Remediation applied: $Value set to 1 (consumer experiences disabled)"
     }
 
     "Rollback" {
@@ -119,27 +128,29 @@ switch ($Action) {
             New-Item -Path $ParentKey -Name "CloudContent" -Force | Out-Null
         }
 
-        $backup = Get-ItemProperty -Path $BackupKey -Name $Value -ErrorAction SilentlyContinue
-        if ($backup) {
-            New-ItemProperty -Path $RegPath -Name $Value -Value $backup.$Value -PropertyType DWORD -Force | Out-Null
-            Write-Output "Rolled back: $Value restored to $($backup.$Value)"
-        } else {
-            Write-Output "No backup found for rollback."
+        foreach ($val in $Values) {
+            $backup = Get-ItemProperty -Path $BackupKey -Name $val -ErrorAction SilentlyContinue
+            if ($backup) {
+                New-ItemProperty -Path $RegPath -Name $val -Value $backup.$val -PropertyType DWORD -Force | Out-Null
+                Write-Output "Rolled back: $val restored to $($backup.$val)"
+            } else {
+                Write-Output "No backup found for $val rollback."
+            }
         }
     }
 }
 
 
-_____________________________________________________________________________
+________________________________________________________
 
 Example Usage
 
-Check current setting
+Check current settings
 
 .\Set-WN10-CC-000197.ps1 -Action Check
 
 
-Remediate (disable consumer experiences)
+Remediate (disable all consumer features)
 
 .\Set-WN10-CC-000197.ps1 -Action Remediate
 
@@ -152,14 +163,18 @@ One-Liner PowerShell Commands
 
 Check
 
-Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" -Name DisableConsumerFeatures
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent"
 
 
 Remediate
 
-Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" -Name DisableConsumerFeatures -Value 1
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent" /v DisableConsumerFeatures /t REG_DWORD /d 1 /f
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent" /v DisableWindowsConsumerFeatures /t REG_DWORD /d 1 /f
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent" /v DisableSoftLanding /t REG_DWORD /d 1 /f
 
 
 Rollback
 
-Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" -Name DisableConsumerFeatures -Valu
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent" /v DisableConsumerFeatures /t REG_DWORD /d 0 /f
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent" /v DisableWindowsConsumerFeatures /t REG_DWORD /d 0 /f
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent" /v DisableSoftLanding /t REG_DWORD /d 0 /f
