@@ -1,7 +1,7 @@
 WN10-CC-000052 – Windows 10 Must Prioritize ECC Curves with Longer Key Lengths
 Overview
 
-TLS cipher suites determine how Windows negotiates secure communications. STIG requires the cipher suite order string to prioritize ECC curves with longer key lengths first (e.g., P-384, P-521 ahead of P-256).
+TLS settings in Windows allow administrators to define which Elliptic Curve Cryptography (ECC) curves are used for key exchange. To maximize security, systems must prioritize stronger curves (e.g., NistP384) ahead of weaker ones (e.g., NistP256).
 
 STIG Requirement
 
@@ -9,42 +9,44 @@ WN10-CC-000052: Windows 10 must be configured to prioritize ECC Curves with long
 
 Severity: Medium
 
-Discussion: ECC with longer key lengths (P-384, P-521) provides stronger protection than shorter curves (P-256). By configuring the SSL Cipher Suite Order, Windows will attempt stronger ciphers first during TLS negotiations.
+Discussion: ECC provides strong cryptographic protection with smaller key sizes compared to RSA. Prioritizing P-384 over P-256 increases resistance to attacks.
 
 Fix Text
 
 Configure the policy:
 
 Navigate in Group Policy:
-Computer Configuration > Administrative Templates > Network > SSL Configuration Settings > SSL Cipher Suite Order
+Computer Configuration > Administrative Templates > Network > SSL Configuration Settings > ECC Curve Order
 
-Set to: Enabled and paste the compliant cipher suite string (DISA/Microsoft baseline).
+Set to: Enabled and specify the following string:
+
+NistP384,NistP256
+
 
 Registry equivalent:
 
-Key:   HKLM\SOFTWARE\Policies\Microsoft\Cryptography\Configuration\SSL\00010002
-Value: Functions (REG_SZ)
-Data:  <full cipher suite order string>
+Key:   HKLM\SOFTWARE\Policies\Microsoft\Cryptography\Configuration\SSL\00010002  
+Value: EccCurves (REG_SZ)  
+Data:  NistP384,NistP256  
 
 Manual Registry Fix
-# Apply Microsoft/DISA baseline cipher suite order (ECC first)
-reg add "HKLM\SOFTWARE\Policies\Microsoft\Cryptography\Configuration\SSL\00010002" /v Functions /t REG_SZ /d "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384_P384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384_P384,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256_P384,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256_P384,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384_P256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384_P256,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256_P256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256_P256,TLS_RSA_WITH_AES_256_GCM_SHA384,TLS_RSA_WITH_AES_128_GCM_SHA256" /f
+# Apply ECC curve order
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Cryptography\Configuration\SSL\00010002" /v EccCurves /t REG_SZ /d "NistP384,NistP256" /f
 
 # Verify
-reg query "HKLM\SOFTWARE\Policies\Microsoft\Cryptography\Configuration\SSL\00010002" /v Functions
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Cryptography\Configuration\SSL\00010002" /v EccCurves
 
 
-Rollback (remove custom order → revert to system defaults):
+Rollback (delete value → revert to system default order):
 
-reg delete "HKLM\SOFTWARE\Policies\Microsoft\Cryptography\Configuration\SSL\00010002" /v Functions /f
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Cryptography\Configuration\SSL\00010002" /v EccCurves /f
 
 PowerShell Script (Check / Remediate / Rollback)
 
 Save as Set-WN10-CC-000052.ps1
 
 
-
-___________________________________________________________
+_________________________________________________________________
 
 
 <#
@@ -52,24 +54,24 @@ ___________________________________________________________
   Enforce DISA STIG WN10-CC-000052 (Prioritize ECC curves with longer key lengths first).
 
 .DESCRIPTION
-  Ensures the SSL Cipher Suite Order registry value is set to a compliant string
-  with longer ECC curves prioritized before shorter curves.
+  Ensures the ECC Curve Order registry value is set to "NistP384,NistP256"
+  under HKLM:\SOFTWARE\Policies\Microsoft\Cryptography\Configuration\SSL\00010002.
   Creates a backup before changes for rollback.
 
 .NOTES
   Author          : Peter Kure
   LinkedIn        : linkedin.com/in/peter-kure
   Github          : github.com/pkure
-  Date Created    : 8/25/2025
-  Last Modified   : 8/25/2025
-  Version         : 2.0
+  Date Created    : 8/26/2025
+  Last Modified   : 8/26/2025
+  Version         : 3.0
   CVEs            : n/a
   Plugin IDs      : n/a
   STIG-ID         : WN10-CC-000052
 
 .PARAMETER Action
-  "Check"     - Display current Functions string
-  "Remediate" - Apply STIG-compliant cipher suite string
+  "Check"     - Display current EccCurves string
+  "Remediate" - Apply STIG-compliant ECC order
   "Rollback"  - Restore from backup if available
 
 .EXAMPLE
@@ -83,20 +85,19 @@ param(
 )
 
 $RegPath   = "HKLM:\SOFTWARE\Policies\Microsoft\Cryptography\Configuration\SSL\00010002"
-$Value     = "Functions"
+$Value     = "EccCurves"
 $BackupKey = "HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-CC-000052"
 
-# Full ECC-first cipher suite string (from Microsoft baseline)
-$CompliantValue = "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384_P384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384_P384,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256_P384,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256_P384,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384_P256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384_P256,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256_P256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256_P256,TLS_RSA_WITH_AES_256_GCM_SHA384,TLS_RSA_WITH_AES_128_GCM_SHA256"
+# Required STIG value
+$CompliantValue = "NistP384,NistP256"
 
 switch ($Action) {
     "Check" {
         $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
         if ($null -eq $current) {
-            Write-Output "Functions not set. Default (possibly insecure) order may apply."
+            Write-Output "EccCurves not set. Default may be insecure."
         } else {
-            Write-Output "Functions is currently set to:"
-            Write-Output $current.$Value
+            Write-Output "EccCurves is currently set to: $($current.$Value)"
         }
     }
 
@@ -105,17 +106,17 @@ switch ($Action) {
         if ($current) {
             New-Item -Path $BackupKey -Force | Out-Null
             New-ItemProperty -Path $BackupKey -Name $Value -Value $current.$Value -PropertyType String -Force | Out-Null
-            Write-Output "Backup saved."
+            Write-Output "Backup saved: $BackupKey\$Value = $($current.$Value)"
         }
         New-ItemProperty -Path $RegPath -Name $Value -Value $CompliantValue -PropertyType String -Force | Out-Null
-        Write-Output "Remediation applied: Functions set to compliant ECC-first string"
+        Write-Output "Remediation applied: EccCurves set to $CompliantValue"
     }
 
     "Rollback" {
         $backup = Get-ItemProperty -Path $BackupKey -Name $Value -ErrorAction SilentlyContinue
         if ($backup) {
             New-ItemProperty -Path $RegPath -Name $Value -Value $backup.$Value -PropertyType String -Force | Out-Null
-            Write-Output "Rolled back: Functions restored from backup"
+            Write-Output "Rolled back: EccCurves restored to $($backup.$Value)"
         } else {
             Write-Output "No backup found for rollback."
         }
@@ -123,7 +124,9 @@ switch ($Action) {
 }
 
 
-___________________________________________________________
+_________________________________________________________________
+
+
 
 Example Usage
 
@@ -132,7 +135,7 @@ Check current setting
 .\Set-WN10-CC-000052.ps1 -Action Check
 
 
-Remediate (apply ECC-first order)
+Remediate (apply ECC curve order)
 
 .\Set-WN10-CC-000052.ps1 -Action Remediate
 
