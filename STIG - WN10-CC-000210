@@ -46,7 +46,9 @@ PowerShell Script (Check / Remediate / Rollback)
 
 Save as Set-WN10-CC-000210.ps1
 
-_______________________________________________________________________
+
+__________________________________________________________________
+
 
 <#
 .SYNOPSIS
@@ -63,7 +65,7 @@ _______________________________________________________________________
   Github          : github.com/pkure
   Date Created    : 8/28/2025
   Last Modified   : 8/28/2025
-  Version         : 2.0
+  Version         : 2.1
   CVEs            : n/a
   Plugin IDs      : n/a
   STIG-ID         : WN10-CC-000210
@@ -84,18 +86,23 @@ param(
 )
 
 $RegPath   = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System"
-$Values    = @{"EnableSmartScreen"=1;"ShellSmartScreenLevel"="Block"}
 $BackupKey = "HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-CC-000210"
 
 switch ($Action) {
     "Check" {
-        foreach ($val in $Values.Keys) {
-            $current = Get-ItemProperty -Path $RegPath -Name $val -ErrorAction SilentlyContinue
-            if ($null -eq $current) {
-                Write-Output "$val not set. Default may be insecure."
-            } else {
-                Write-Output "$val is set to $($current.$val)"
-            }
+        $smartScreen = Get-ItemProperty -Path $RegPath -Name "EnableSmartScreen" -ErrorAction SilentlyContinue
+        $level = Get-ItemProperty -Path $RegPath -Name "ShellSmartScreenLevel" -ErrorAction SilentlyContinue
+
+        if ($null -eq $smartScreen) {
+            Write-Output "EnableSmartScreen not set."
+        } else {
+            Write-Output "EnableSmartScreen is set to $($smartScreen.EnableSmartScreen)"
+        }
+
+        if ($null -eq $level) {
+            Write-Output "ShellSmartScreenLevel not set."
+        } else {
+            Write-Output "ShellSmartScreenLevel is set to $($level.ShellSmartScreenLevel)"
         }
     }
 
@@ -104,16 +111,22 @@ switch ($Action) {
             New-Item -Path (Split-Path $RegPath) -Name (Split-Path $RegPath -Leaf) -Force | Out-Null
         }
 
-        foreach ($val in $Values.Keys) {
+        # Backup existing values
+        foreach ($val in @("EnableSmartScreen","ShellSmartScreenLevel")) {
             $current = Get-ItemProperty -Path $RegPath -Name $val -ErrorAction SilentlyContinue
             if ($current) {
                 New-Item -Path $BackupKey -Force | Out-Null
                 New-ItemProperty -Path $BackupKey -Name $val -Value $current.$val -PropertyType String -Force | Out-Null
                 Write-Output "Backup saved: $BackupKey\$val = $($current.$val)"
             }
-            New-ItemProperty -Path $RegPath -Name $val -Value $Values[$val] -PropertyType ([string]::IsNullOrEmpty($Values[$val].ToString()) -eq $false -and $Values[$val].GetType().Name -eq "Int32" ? "DWORD" : "String") -Force | Out-Null
-            Write-Output "Remediation applied: $val set to $($Values[$val])"
         }
+
+        # Apply compliant settings
+        New-ItemProperty -Path $RegPath -Name "EnableSmartScreen" -Value 1 -PropertyType DWORD -Force | Out-Null
+        Write-Output "Remediation applied: EnableSmartScreen set to 1"
+
+        New-ItemProperty -Path $RegPath -Name "ShellSmartScreenLevel" -Value "Block" -PropertyType String -Force | Out-Null
+        Write-Output "Remediation applied: ShellSmartScreenLevel set to Block"
     }
 
     "Rollback" {
@@ -121,7 +134,7 @@ switch ($Action) {
             New-Item -Path (Split-Path $RegPath) -Name (Split-Path $RegPath -Leaf) -Force | Out-Null
         }
 
-        foreach ($val in $Values.Keys) {
+        foreach ($val in @("EnableSmartScreen","ShellSmartScreenLevel")) {
             $backup = Get-ItemProperty -Path $BackupKey -Name $val -ErrorAction SilentlyContinue
             if ($backup) {
                 New-ItemProperty -Path $RegPath -Name $val -Value $backup.$val -PropertyType String -Force | Out-Null
@@ -133,7 +146,8 @@ switch ($Action) {
     }
 }
 
-_______________________________________________________________________
+
+__________________________________________________________________
 
 Example Usage
 
