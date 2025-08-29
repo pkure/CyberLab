@@ -1,16 +1,15 @@
 WN10-SO-000080 – The Windows Dialog Box Title for the Legal Banner Must Be Configured
 Overview
 
-Windows can display a legal notice before logon. This control requires both the title (caption) and the body text of the legal banner to be configured. Without them, users may not be clearly informed that the system is for authorized use only.
+Windows displays a legal notice before logon. This STIG requires the title (caption) of the banner to be configured with approved wording, typically “DoD Notice and Consent Banner”, “US Department of Defense Warning Statement”, or an organizational equivalent.
 
 STIG Requirement
 
 WN10-SO-000080: The Windows dialog box title for the legal banner must be configured.
-(Often paired with WN10-SO-000085 – LegalNoticeText must be configured.)
 
 Severity: Medium
 
-Discussion: Legal banners help establish user awareness and legal standing for monitoring. Both a title and body text are required to provide clarity and enforce organizational requirements.
+Discussion: Legal banners provide notice of monitoring and authorized use. Without a configured caption, users may not clearly understand system restrictions. DISA requires either the official DoD wording or an equivalent that does not weaken the mandatory text in WN10-SO-000075 (banner body).
 
 Fix Text
 
@@ -18,28 +17,27 @@ Configure the policy:
 
 Navigate in Group Policy:
 Computer Configuration > Windows Settings > Security Settings > Local Policies > Security Options > Interactive logon: Message title for users attempting to log on
-Computer Configuration > Windows Settings > Security Settings > Local Policies > Security Options > Interactive logon: Message text for users attempting to log on
 
-Set both values to non-empty strings (e.g., “NOTICE – Authorized Use Only” and “This system is for authorized use only. Unauthorized access is prohibited.”).
+Set to: "DoD Notice and Consent Banner" (recommended).
 
 Registry equivalents:
 
-Key:   HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
-Values:
-  LegalNoticeCaption (REG_SZ) = <custom title string>
-  LegalNoticeText    (REG_SZ) = <custom body string>
+Key:   HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System  
+Values:  
+  LegalNoticeCaption (REG_SZ) = "DoD Notice and Consent Banner"  
+  LegalNoticeText    (REG_SZ) = <custom body string, per WN10-SO-000075>  
 
 Manual Registry Fix
-# Set legal notice title and text
-reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v LegalNoticeCaption /t REG_SZ /d "NOTICE - Authorized Use Only" /f
-reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v LegalNoticeText /t REG_SZ /d "This system is for authorized use only. Unauthorized access is prohibited." /f
+# Set legal banner title and text
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v LegalNoticeCaption /t REG_SZ /d "DoD Notice and Consent Banner" /f
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v LegalNoticeText /t REG_SZ /d "You are accessing a U.S. Government (USG) Information System (IS). Unauthorized use is prohibited..." /f
 
 # Verify
 reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v LegalNoticeCaption
 reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v LegalNoticeText
 
 
-Rollback (removes both values – not recommended):
+Rollback (removes both – not recommended):
 
 reg delete "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v LegalNoticeCaption /f
 reg delete "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v LegalNoticeText /f
@@ -48,24 +46,26 @@ PowerShell Script (Check / Remediate / Rollback)
 
 Save as Set-WN10-SO-000080.ps1
 
-______________________________________________________________
+
+_______________________________________________________
 
 <#
 .SYNOPSIS
   Enforce DISA STIG WN10-SO-000080 (The Windows dialog box title for the legal banner must be configured).
 
 .DESCRIPTION
-  Ensures LegalNoticeCaption and LegalNoticeText are configured under
+  Ensures LegalNoticeCaption and LegalNoticeText are set under
   HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System.
+  Caption defaults to "DoD Notice and Consent Banner".
   Creates a backup before changes for rollback.
 
 .NOTES
   Author          : Peter Kure
   LinkedIn        : linkedin.com/in/peter-kure
   Github          : github.com/pkure
-  Date Created    : 8/28/2025
-  Last Modified   : 8/28/2025
-  Version         : 2.0
+  Date Created    : 8/26/2025
+  Last Modified   : 8/26/2025
+  Version         : 3.0
   CVEs            : n/a
   Plugin IDs      : n/a
   STIG-ID         : WN10-SO-000080 (+ WN10-SO-000085)
@@ -75,8 +75,14 @@ ______________________________________________________________
   "Remediate" - Apply STIG-compliant values
   "Rollback"  - Restore from backup if available
 
+.PARAMETER BannerTitle
+  Banner caption. Default: "DoD Notice and Consent Banner"
+
+.PARAMETER BannerText
+  Banner body text. Default: sample DoD notice
+
 .EXAMPLE
-  .\Set-WN10-SO-000080.ps1 -Action Check
+  .\Set-WN10-SO-000080.ps1 -Action Remediate
 #>
 
 param(
@@ -84,8 +90,8 @@ param(
     [ValidateSet("Check","Remediate","Rollback")]
     [string]$Action,
 
-    [string]$BannerTitle = "NOTICE - Authorized Use Only",
-    [string]$BannerText  = "This system is for authorized use only. Unauthorized access is prohibited."
+    [string]$BannerTitle = "DoD Notice and Consent Banner",
+    [string]$BannerText  = "You are accessing a U.S. Government (USG) Information System (IS). Unauthorized use is prohibited."
 )
 
 $RegPath   = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
@@ -96,34 +102,21 @@ switch ($Action) {
         $caption = Get-ItemProperty -Path $RegPath -Name "LegalNoticeCaption" -ErrorAction SilentlyContinue
         $text    = Get-ItemProperty -Path $RegPath -Name "LegalNoticeText" -ErrorAction SilentlyContinue
 
-        if ($null -eq $caption) {
-            Write-Output "LegalNoticeCaption not set."
-        } else {
-            Write-Output "LegalNoticeCaption is currently: $($caption.LegalNoticeCaption)"
-        }
-
-        if ($null -eq $text) {
-            Write-Output "LegalNoticeText not set."
-        } else {
-            Write-Output "LegalNoticeText is currently: $($text.LegalNoticeText)"
-        }
+        Write-Output ("LegalNoticeCaption: " + ($caption.LegalNoticeCaption  | Out-String).Trim())
+        Write-Output ("LegalNoticeText: "    + ($text.LegalNoticeText       | Out-String).Trim())
     }
 
     "Remediate" {
-        foreach ($val in @("LegalNoticeCaption","LegalNoticeText")) {
-            $current = Get-ItemProperty -Path $RegPath -Name $val -ErrorAction SilentlyContinue
+        foreach ($val in @{"LegalNoticeCaption"=$BannerTitle;"LegalNoticeText"=$BannerText}.GetEnumerator()) {
+            $current = Get-ItemProperty -Path $RegPath -Name $val.Key -ErrorAction SilentlyContinue
             if ($current) {
                 New-Item -Path $BackupKey -Force | Out-Null
-                New-ItemProperty -Path $BackupKey -Name $val -Value $current.$val -PropertyType String -Force | Out-Null
-                Write-Output "Backup saved: $BackupKey\$val = $($current.$val)"
+                New-ItemProperty -Path $BackupKey -Name $val.Key -Value $current.$($val.Key) -PropertyType String -Force | Out-Null
+                Write-Output "Backup saved: $BackupKey\$($val.Key) = $($current.$($val.Key))"
             }
+            New-ItemProperty -Path $RegPath -Name $val.Key -Value $val.Value -PropertyType String -Force | Out-Null
+            Write-Output "Remediation applied: $($val.Key) set to '$($val.Value)'"
         }
-
-        New-ItemProperty -Path $RegPath -Name "LegalNoticeCaption" -Value $BannerTitle -PropertyType String -Force | Out-Null
-        Write-Output "Remediation applied: LegalNoticeCaption set to '$BannerTitle'"
-
-        New-ItemProperty -Path $RegPath -Name "LegalNoticeText" -Value $BannerText -PropertyType String -Force | Out-Null
-        Write-Output "Remediation applied: LegalNoticeText set to '$BannerText'"
     }
 
     "Rollback" {
@@ -139,7 +132,8 @@ switch ($Action) {
     }
 }
 
-______________________________________________________________
+
+_______________________________________________________
 
 
 Example Usage
@@ -149,14 +143,14 @@ Check current settings
 .\Set-WN10-SO-000080.ps1 -Action Check
 
 
-Remediate (apply default title & text)
+Remediate (DoD caption + default text)
 
 .\Set-WN10-SO-000080.ps1 -Action Remediate
 
 
 Remediate with custom text
 
-.\Set-WN10-SO-000080.ps1 -Action Remediate -BannerTitle "ACME Corp – Authorized Access Only" -BannerText "This system is monitored. Unauthorized use is prohibited."
+.\Set-WN10-SO-000080.ps1 -Action Remediate -BannerTitle "DoD Notice and Consent Banner" -BannerText "This system is monitored. Unauthorized use is prohibited."
 
 
 Rollback
@@ -173,8 +167,8 @@ reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v Le
 
 Remediate
 
-reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v LegalNoticeCaption /t REG_SZ /d "NOTICE - Authorized Use Only" /f
-reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v LegalNoticeText /t REG_SZ /d "This system is for authorized use only. Unauthorized access is prohibited." /f
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v LegalNoticeCaption /t REG_SZ /d "DoD Notice and Consent Banner" /f
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v LegalNoticeText /t REG_SZ /d "You are accessing a U.S. Government (USG) Information System (IS). Unauthorized use is prohibited." /f
 
 
 Rollback
