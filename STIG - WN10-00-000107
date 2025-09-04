@@ -1,7 +1,7 @@
 WN10-00-000107 – Copilot in Windows Must Be Disabled for Windows 10
 Overview
 
-Windows Copilot integrates AI-powered features into Windows. While useful in consumer environments, in enterprise and DoD environments it poses privacy and data exposure risks, since queries and interactions can be transmitted externally. This STIG requires disabling Copilot entirely.
+Windows Copilot integrates AI-powered features into the Windows shell. While marketed for productivity, it introduces privacy and security risks by sending data externally. DoD STIGs require disabling Copilot to prevent unintended data exposure.
 
 STIG Requirement
 
@@ -9,16 +9,16 @@ WN10-00-000107: Copilot in Windows must be disabled for Windows 10.
 
 Severity: Medium
 
-Discussion: Copilot leverages AI-based cloud services that may process or retain sensitive organizational data. Disabling the feature ensures sensitive system and user data cannot be inadvertently exposed.
+Discussion: Disabling Copilot ensures sensitive information is not transmitted to cloud services via the Copilot AI assistant.
 
 Fix Text
 
 Configure the policy:
 
 Navigate in Group Policy:
-Computer Configuration > Administrative Templates > Windows Components > Windows Copilot
+Computer Configuration > Administrative Templates > Windows Components > Windows Copilot > Turn off Windows Copilot
 
-Set Turn off Windows Copilot to: Enabled
+Set to: Enabled
 
 Registry equivalent:
 
@@ -42,8 +42,8 @@ PowerShell Script (Check / Remediate / Rollback)
 
 Save as Set-WN10-00-000107.ps1
 
+_______________________________________________________________________
 
-_____________________________________________________________________
 
 <#
 .SYNOPSIS
@@ -60,7 +60,7 @@ _____________________________________________________________________
   Github          : github.com/pkure
   Date Created    : 9/4/2025
   Last Modified   : 9/4/2025
-  Version         : 1.0
+  Version         : 2.0
   CVEs            : n/a
   Plugin IDs      : n/a
   STIG-ID         : WN10-00-000107
@@ -99,7 +99,7 @@ switch ($Action) {
             New-Item -Path $RegPath -Force | Out-Null
         }
 
-        # Backup current value if present
+        # Backup current if present
         $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
         if ($current) {
             New-Item -Path $BackupKey -Force | Out-Null
@@ -107,9 +107,8 @@ switch ($Action) {
             Write-Output "Backup saved: $BackupKey\$Value = $($current.$Value)"
         }
 
-        # Apply compliant value
         New-ItemProperty -Path $RegPath -Name $Value -Value 1 -PropertyType DWORD -Force | Out-Null
-        Write-Output "Remediation applied: $Value set to 1 (Copilot disabled)"
+        Write-Output "Remediation applied: Copilot disabled ($Value=1)"
     }
 
     "Rollback" {
@@ -123,7 +122,8 @@ switch ($Action) {
     }
 }
 
-_____________________________________________________________________
+
+_______________________________________________________________________
 
 Example Usage
 
