@@ -1,0 +1,153 @@
+WN10-SO-000205 – The LanMan Authentication Level Must Be Set to Send NTLMv2 Response Only, and to Refuse LM and NTLM
+Overview
+
+Windows systems support several authentication protocols for backwards compatibility, including LAN Manager (LM) and NTLM. These legacy protocols are weak and vulnerable to replay and brute force attacks. This STIG requires the system to use NTLMv2 only and to refuse LM and NTLM.
+
+STIG Requirement
+
+WN10-SO-000205: The LanMan authentication level must be set to send NTLMv2 response only, and to refuse LM and NTLM.
+
+Severity: High
+
+Discussion: LM and NTLM responses are vulnerable to cryptographic attacks. NTLMv2 provides stronger authentication and resistance to replay. Refusing LM and NTLM ensures Windows never falls back to insecure protocols.
+
+Fix Text
+
+Configure the policy:
+
+Navigate in Group Policy:
+Computer Configuration > Windows Settings > Security Settings > Local Policies > Security Options > Network security: LAN Manager authentication level
+
+Set to: Send NTLMv2 response only. Refuse LM & NTLM
+
+Registry equivalent:
+
+Key:   HKLM\SYSTEM\CurrentControlSet\Control\Lsa  
+Value: LmCompatibilityLevel (DWORD)  
+Data:  5  
+
+Manual Registry Fix
+# Enforce NTLMv2 only, refuse LM & NTLM
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LmCompatibilityLevel /t REG_DWORD /d 5 /f
+
+# Verify
+reg query "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LmCompatibilityLevel
+
+
+Rollback (insecure – default value is 0, which allows LM/NTLM):
+
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LmCompatibilityLevel /t REG_DWORD /d 0 /f
+
+PowerShell Script (Check / Remediate / Rollback)
+
+Save as Set-WN10-SO-000205.ps1
+
+_______________________________________________________________________
+
+
+<#
+.SYNOPSIS
+  Enforce DISA STIG WN10-SO-000205 (LAN Manager authentication level).
+
+.DESCRIPTION
+  Ensures LmCompatibilityLevel is set to 5 (Send NTLMv2 only, refuse LM & NTLM).
+  Creates a backup before changes for rollback.
+
+.NOTES
+  Author          : Peter Kure
+  LinkedIn        : linkedin.com/in/peter-kure
+  Github          : github.com/pkure
+  Date Created    : 9/4/2025
+  Last Modified   : 9/4/2025
+  Version         : 1.0
+  CVEs            : n/a
+  Plugin IDs      : n/a
+  STIG-ID         : WN10-SO-000205
+
+.PARAMETER Action
+  "Check"     - Display current setting
+  "Remediate" - Apply STIG-compliant value
+  "Rollback"  - Restore from backup if available
+
+.EXAMPLE
+  .\Set-WN10-SO-000205.ps1 -Action Check
+#>
+
+param(
+    [Parameter(Mandatory=$true)]
+    [ValidateSet("Check","Remediate","Rollback")]
+    [string]$Action
+)
+
+$RegPath   = "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa"
+$Value     = "LmCompatibilityLevel"
+$BackupKey = "HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-SO-000205"
+
+switch ($Action) {
+    "Check" {
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($null -eq $current) {
+            Write-Output "$Value not found. Default may be insecure."
+        } else {
+            Write-Output "$Value is set to $($current.$Value)"
+        }
+    }
+
+    "Remediate" {
+        # Backup current if present
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($current) {
+            New-Item -Path $BackupKey -Force | Out-Null
+            New-ItemProperty -Path $BackupKey -Name $Value -Value $current.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Backup saved: $BackupKey\$Value = $($current.$Value)"
+        }
+
+        # Apply compliant value
+        New-ItemProperty -Path $RegPath -Name $Value -Value 5 -PropertyType DWORD -Force | Out-Null
+        Write-Output "Remediation applied: $Value set to 5 (NTLMv2 only, refuse LM & NTLM)"
+    }
+
+    "Rollback" {
+        $backup = Get-ItemProperty -Path $BackupKey -Name $Value -ErrorAction SilentlyContinue
+        if ($backup) {
+            New-ItemProperty -Path $RegPath -Name $Value -Value $backup.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Rolled back: $Value restored to $($backup.$Value)"
+        } else {
+            Write-Output "No backup found for rollback."
+        }
+    }
+}
+
+_______________________________________________________________________
+
+Example Usage
+
+Check current setting
+
+.\Set-WN10-SO-000205.ps1 -Action Check
+
+
+Remediate (set to NTLMv2 only)
+
+.\Set-WN10-SO-000205.ps1 -Action Remediate
+
+
+Rollback (restore backup)
+
+.\Set-WN10-SO-000205.ps1 -Action Rollback
+
+One-Liner PowerShell Commands
+
+Check
+
+Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name LmCompatibilityLevel
+
+
+Remediate
+
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name LmCompatibilityLevel -Value 5
+
+
+Rollback
+
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name LmCompatibilityLevel -Value 0
