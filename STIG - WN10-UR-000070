@@ -1,0 +1,173 @@
+WN10-UR-000070 – Deny Access to This Computer From the Network
+Overview
+
+Windows allows administrators to define which users/groups cannot access the system over the network. This STIG requires explicitly denying access to highly privileged domain accounts, local accounts on domain systems, and unauthenticated access, to prevent abuse or lateral movement.
+
+STIG Requirement
+
+WN10-UR-000070: The Deny access to this computer from the network user right on workstations must be configured to prevent access from highly privileged domain accounts and local accounts on domain systems and unauthenticated access on all systems.
+
+Severity: High
+
+Discussion: By default, administrators may overlook this user right. If domain admins, local accounts, or unauthenticated users can connect over the network, attackers can exploit these sessions for lateral movement. Configuring explicit deny entries prevents remote exploitation of privileged accounts.
+
+Fix Text
+
+Configure the policy:
+
+Navigate in Group Policy:
+Computer Configuration > Windows Settings > Security Settings > Local Policies > User Rights Assignment > Deny access to this computer from the network
+
+Add the following security principals:
+
+Guests
+
+Local account
+
+Local account and member of Administrators group
+
+(Your environment may also require Domain Admins or equivalent high-privilege groups)
+
+Registry equivalent (secpol stores in LSA policy):
+
+Key:   HKLM\SECURITY\Policy\PolAcDmN (internal, not editable directly)
+
+
+⚠️ There is no safe direct registry edit — must use secedit or ntrights.exe/PowerShell cmdlets.
+
+Manual Fix (PowerShell)
+
+Check current assignment:
+
+secedit /export /cfg C:\secpol.cfg
+findstr "SeDenyNetworkLogonRight" C:\secpol.cfg
+
+
+Remediate (overwrite with correct SIDs):
+
+# Define accounts/groups
+$DenyList = @("Guests","Local account","Local account and member of Administrators group")
+
+# Apply via secedit INF template
+$inf = @"
+[Unicode]
+Unicode=yes
+[Version]
+signature="\$CHICAGO$"
+Revision=1
+[Privilege Rights]
+SeDenyNetworkLogonRight = *S-1-5-32-546,*S-1-5-113,*S-1-5-114
+"@
+$inf | Out-File C:\DenyNetwork.inf -Encoding ASCII
+
+secedit /configure /db C:\Windows\security\Database\secedit.sdb /cfg C:\DenyNetwork.inf /areas USER_RIGHTS
+
+
+Verify:
+
+secedit /export /cfg C:\secpol.cfg
+findstr "SeDenyNetworkLogonRight" C:\secpol.cfg
+
+
+Rollback (remove deny list):
+
+secedit /configure /db C:\Windows\security\Database\secedit.sdb /cfg %windir%\inf\defltbase.inf /areas USER_RIGHTS
+
+PowerShell Script (Check / Remediate / Rollback)
+
+Save as Set-WN10-UR-000070.ps1
+
+______________________________________________________
+
+<#
+.SYNOPSIS
+  Enforce DISA STIG WN10-UR-000070 (Deny access to this computer from the network).
+
+.DESCRIPTION
+  Ensures SeDenyNetworkLogonRight includes Guests, Local accounts, and Local admin accounts.
+  Uses secedit with an INF template (no direct registry key exists).
+  Backup exported before changes for rollback.
+
+.NOTES
+  Author          : Peter Kure
+  LinkedIn        : linkedin.com/in/peter-kure
+  Github          : github.com/pkure
+  Date Created    : 9/4/2025
+  Last Modified   : 9/4/2025
+  Version         : 1.0
+  CVEs            : n/a
+  Plugin IDs      : n/a
+  STIG-ID         : WN10-UR-000070
+
+.PARAMETER Action
+  "Check"     - Display current deny list
+  "Remediate" - Apply STIG-compliant deny list
+  "Rollback"  - Restore from backup (default template)
+
+.EXAMPLE
+  .\Set-WN10-UR-000070.ps1 -Action Check
+#>
+
+param(
+    [Parameter(Mandatory=$true)]
+    [ValidateSet("Check","Remediate","Rollback")]
+    [string]$Action
+)
+
+$ExportCfg = "C:\secpol.cfg"
+$InfFile   = "C:\DenyNetwork.inf"
+$BackupDb  = "C:\Windows\security\Database\secedit_backup.sdb"
+
+switch ($Action) {
+    "Check" {
+        secedit /export /cfg $ExportCfg | Out-Null
+        $line = Select-String -Path $ExportCfg -Pattern "SeDenyNetworkLogonRight"
+        Write-Output $line
+    }
+
+    "Remediate" {
+        # Backup current policy DB
+        Copy-Item "C:\Windows\security\Database\secedit.sdb" $BackupDb -Force
+
+        $inf = @"
+[Unicode]
+Unicode=yes
+[Version]
+signature="\$CHICAGO$"
+Revision=1
+[Privilege Rights]
+SeDenyNetworkLogonRight = *S-1-5-32-546,*S-1-5-113,*S-1-5-114
+"@
+        $inf | Out-File $InfFile -Encoding ASCII
+
+        secedit /configure /db C:\Windows\security\Database\secedit.sdb /cfg $InfFile /areas USER_RIGHTS
+        Write-Output "Remediation applied: Deny network logon set to Guests, Local accounts, Local admin accounts"
+    }
+
+    "Rollback" {
+        if (Test-Path $BackupDb) {
+            secedit /import /db C:\Windows\security\Database\secedit.sdb /cfg $ExportCfg /overwrite
+            Write-Output "Rolled back: Security DB restored from backup"
+        } else {
+            Write-Output "No backup found for rollback."
+        }
+    }
+}
+
+______________________________________________________
+
+Example Usage
+
+Check current setting
+
+.\Set-WN10-UR-000070.ps1 -Action Check
+
+
+Remediate (apply deny list)
+
+.\Set-WN10-UR-000070.ps1 -Action Remediate
+
+
+Rollback (restore backup)
+
+.\Set-WN10-UR-000070.ps1 -Action Rollback
