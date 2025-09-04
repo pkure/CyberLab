@@ -1,0 +1,158 @@
+WN10-00-000107 – Copilot in Windows Must Be Disabled for Windows 10
+Overview
+
+Windows Copilot integrates AI-powered features into Windows. While useful in consumer environments, in enterprise and DoD environments it poses privacy and data exposure risks, since queries and interactions can be transmitted externally. This STIG requires disabling Copilot entirely.
+
+STIG Requirement
+
+WN10-00-000107: Copilot in Windows must be disabled for Windows 10.
+
+Severity: Medium
+
+Discussion: Copilot leverages AI-based cloud services that may process or retain sensitive organizational data. Disabling the feature ensures sensitive system and user data cannot be inadvertently exposed.
+
+Fix Text
+
+Configure the policy:
+
+Navigate in Group Policy:
+Computer Configuration > Administrative Templates > Windows Components > Windows Copilot
+
+Set Turn off Windows Copilot to: Enabled
+
+Registry equivalent:
+
+Key:   HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot  
+Value: TurnOffWindowsCopilot (DWORD)  
+Data:  1  
+
+Manual Registry Fix
+# Disable Copilot
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" /v TurnOffWindowsCopilot /t REG_DWORD /d 1 /f
+
+# Verify
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" /v TurnOffWindowsCopilot
+
+
+Rollback (not recommended – re-enables Copilot):
+
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" /v TurnOffWindowsCopilot /t REG_DWORD /d 0 /f
+
+PowerShell Script (Check / Remediate / Rollback)
+
+Save as Set-WN10-00-000107.ps1
+
+
+_____________________________________________________________________
+
+<#
+.SYNOPSIS
+  Enforce DISA STIG WN10-00-000107 (Copilot in Windows must be disabled).
+
+.DESCRIPTION
+  Ensures TurnOffWindowsCopilot is set to 1 under
+  HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot.
+  Creates a backup before changes for rollback.
+
+.NOTES
+  Author          : Peter Kure
+  LinkedIn        : linkedin.com/in/peter-kure
+  Github          : github.com/pkure
+  Date Created    : 9/4/2025
+  Last Modified   : 9/4/2025
+  Version         : 1.0
+  CVEs            : n/a
+  Plugin IDs      : n/a
+  STIG-ID         : WN10-00-000107
+
+.PARAMETER Action
+  "Check"     - Display current setting
+  "Remediate" - Apply STIG-compliant value
+  "Rollback"  - Restore from backup if available
+
+.EXAMPLE
+  .\Set-WN10-00-000107.ps1 -Action Check
+#>
+
+param(
+    [Parameter(Mandatory=$true)]
+    [ValidateSet("Check","Remediate","Rollback")]
+    [string]$Action
+)
+
+$RegPath   = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot"
+$Value     = "TurnOffWindowsCopilot"
+$BackupKey = "HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-00-000107"
+
+switch ($Action) {
+    "Check" {
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($null -eq $current) {
+            Write-Output "$Value not set. Default may be insecure."
+        } else {
+            Write-Output "$Value is set to $($current.$Value)"
+        }
+    }
+
+    "Remediate" {
+        if (-not (Test-Path $RegPath)) {
+            New-Item -Path $RegPath -Force | Out-Null
+        }
+
+        # Backup current value if present
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($current) {
+            New-Item -Path $BackupKey -Force | Out-Null
+            New-ItemProperty -Path $BackupKey -Name $Value -Value $current.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Backup saved: $BackupKey\$Value = $($current.$Value)"
+        }
+
+        # Apply compliant value
+        New-ItemProperty -Path $RegPath -Name $Value -Value 1 -PropertyType DWORD -Force | Out-Null
+        Write-Output "Remediation applied: $Value set to 1 (Copilot disabled)"
+    }
+
+    "Rollback" {
+        $backup = Get-ItemProperty -Path $BackupKey -Name $Value -ErrorAction SilentlyContinue
+        if ($backup) {
+            New-ItemProperty -Path $RegPath -Name $Value -Value $backup.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Rolled back: $Value restored to $($backup.$Value)"
+        } else {
+            Write-Output "No backup found for rollback."
+        }
+    }
+}
+
+_____________________________________________________________________
+
+Example Usage
+
+Check current setting
+
+.\Set-WN10-00-000107.ps1 -Action Check
+
+
+Remediate (disable Copilot)
+
+.\Set-WN10-00-000107.ps1 -Action Remediate
+
+
+Rollback
+
+.\Set-WN10-00-000107.ps1 -Action Rollback
+
+One-Liner PowerShell Commands
+
+Check
+
+Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" -Name TurnOffWindowsCopilot
+
+
+Remediate
+
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" -Name TurnOffWindowsCopilot -Value 1
+
+
+Rollback
+
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" -Name TurnOffWindowsCopilot -Value 0
