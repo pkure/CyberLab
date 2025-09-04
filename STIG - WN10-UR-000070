@@ -140,7 +140,7 @@ SeDenyNetworkLogonRight = *S-1-5-32-546,*S-1-5-113,*S-1-5-114
 "@
         $inf | Out-File $InfFile -Encoding ASCII
 
-        secedit /configure /db C:\Windows\security\Database\secedit.sdb /cfg $InfFile /areas USER_RIGHTS
+        secedit /configure /db C:\Windows\security\Database\secedit.sdb /cfg $InfFile /overwrite /areas USER_RIGHTS /log C:\DenyNetwork.log
         Write-Output "Remediation applied: Deny network logon set to Guests, Local accounts, Local admin accounts"
     }
 
