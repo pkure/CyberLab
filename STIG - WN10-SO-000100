@@ -1,0 +1,156 @@
+WN10-SO-000100 – The Windows SMB Client Must Be Configured to Always Perform SMB Packet Signing
+Overview
+
+SMB (Server Message Block) is the protocol used for file and printer sharing in Windows environments. Without packet signing, SMB traffic can be intercepted and modified (man-in-the-middle). This STIG requires that the SMB client always signs packets, ensuring authenticity and integrity of communications.
+
+STIG Requirement
+
+WN10-SO-000100: The Windows SMB client must be configured to always perform SMB packet signing.
+
+Severity: High
+
+Discussion: SMB packet signing prevents session hijacking and replay attacks. By requiring signing, the SMB client verifies that data originates from a trusted source. Without this, attackers could tamper with SMB communications.
+
+Fix Text
+
+Configure the policy:
+
+Navigate in Group Policy:
+Computer Configuration > Windows Settings > Security Settings > Local Policies > Security Options > Microsoft network client: Digitally sign communications (always)
+
+Set to: Enabled
+
+Registry equivalent:
+
+Key:   HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters  
+Value: RequireSecuritySignature (DWORD)  
+Data:  1  
+
+Manual Registry Fix
+# Enable SMB client signing (always)
+reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters" /v RequireSecuritySignature /t REG_DWORD /d 1 /f
+
+# Verify
+reg query "HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters" /v RequireSecuritySignature
+
+
+Rollback (insecure – disables requirement):
+
+reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters" /v RequireSecuritySignature /t REG_DWORD /d 0 /f
+
+PowerShell Script (Check / Remediate / Rollback)
+
+Save as Set-WN10-SO-000100.ps1
+
+
+
+___________________________________________________________________________
+
+
+<#
+.SYNOPSIS
+  Enforce DISA STIG WN10-SO-000100 (SMB client must always perform packet signing).
+
+.DESCRIPTION
+  Ensures RequireSecuritySignature is set to 1 under
+  HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters.
+  Creates a backup before changes for rollback.
+
+.NOTES
+  Author          : Peter Kure
+  LinkedIn        : linkedin.com/in/peter-kure
+  Github          : github.com/pkure
+  Date Created    : 9/4/2025
+  Last Modified   : 9/4/2025
+  Version         : 1.0
+  CVEs            : n/a
+  Plugin IDs      : n/a
+  STIG-ID         : WN10-SO-000100
+
+.PARAMETER Action
+  "Check"     - Display current setting
+  "Remediate" - Apply STIG-compliant value
+  "Rollback"  - Restore from backup if available
+
+.EXAMPLE
+  .\Set-WN10-SO-000100.ps1 -Action Check
+#>
+
+param(
+    [Parameter(Mandatory=$true)]
+    [ValidateSet("Check","Remediate","Rollback")]
+    [string]$Action
+)
+
+$RegPath   = "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters"
+$Value     = "RequireSecuritySignature"
+$BackupKey = "HKLM:\SOFTWARE\LogNPacific\STIGBackups\WN10-SO-000100"
+
+switch ($Action) {
+    "Check" {
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($null -eq $current) {
+            Write-Output "Setting not found. Default may be insecure."
+        } else {
+            Write-Output "$Value is set to $($current.$Value)"
+        }
+    }
+
+    "Remediate" {
+        # Backup current value if present
+        $current = Get-ItemProperty -Path $RegPath -Name $Value -ErrorAction SilentlyContinue
+        if ($current) {
+            New-Item -Path $BackupKey -Force | Out-Null
+            New-ItemProperty -Path $BackupKey -Name $Value -Value $current.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Backup saved: $BackupKey\$Value = $($current.$Value)"
+        }
+
+        # Apply compliant setting
+        New-ItemProperty -Path $RegPath -Name $Value -Value 1 -PropertyType DWORD -Force | Out-Null
+        Write-Output "Remediation applied: $Value set to 1 (SMB client signing required)"
+    }
+
+    "Rollback" {
+        $backup = Get-ItemProperty -Path $BackupKey -Name $Value -ErrorAction SilentlyContinue
+        if ($backup) {
+            New-ItemProperty -Path $RegPath -Name $Value -Value $backup.$Value -PropertyType DWORD -Force | Out-Null
+            Write-Output "Rolled back: $Value restored to $($backup.$Value)"
+        } else {
+            Write-Output "No backup found for rollback."
+        }
+    }
+}
+
+__________________________________________________________________________
+
+Example Usage
+
+Check current setting
+
+.\Set-WN10-SO-000100.ps1 -Action Check
+
+
+Remediate (require SMB client signing)
+
+.\Set-WN10-SO-000100.ps1 -Action Remediate
+
+
+Rollback
+
+.\Set-WN10-SO-000100.ps1 -Action Rollback
+
+One-Liner PowerShell Commands
+
+Check
+
+Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters" -Name RequireSecuritySignature
+
+
+Remediate
+
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters" -Name RequireSecuritySignature -Value 1
+
+
+Rollback
+
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters" -Name RequireSecuritySignature -Value 0
