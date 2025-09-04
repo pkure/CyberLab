@@ -60,7 +60,7 @@ SeDenyNetworkLogonRight = *S-1-5-32-546,*S-1-5-113,*S-1-5-114
 "@
 $inf | Out-File C:\DenyNetwork.inf -Encoding ASCII
 
-secedit /configure /db C:\Windows\security\Database\secedit.sdb /cfg C:\DenyNetwork.inf /areas USER_RIGHTS
+secedit /configure /db C:\Windows\security\Database\secedit.sdb /cfg C:\DenyNetwork.inf /overwrite /areas USER_RIGHTS /log C:\DenyNetwork.log
 
 
 Verify:
