@@ -33,7 +33,7 @@ Registry equivalent (secpol stores in LSA policy):
 Key:   HKLM\SECURITY\Policy\PolAcDmN (internal, not editable directly)
 
 
-⚠️ There is no safe direct registry edit — must use secedit or ntrights.exe/PowerShell cmdlets.
+There is no safe direct registry edit — must use secedit or ntrights.exe/PowerShell cmdlets.
 
 Manual Fix (PowerShell)
 
