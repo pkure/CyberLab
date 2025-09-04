@@ -1,0 +1,147 @@
+WN10-AC-000020 – The Password History Must Be Configured to 24 Passwords Remembered
+Overview
+
+Password history prevents users from reusing recently used passwords. This STIG requires Windows 10 to remember at least 24 unique previous passwords before a password can be reused.
+
+STIG Requirement
+
+WN10-AC-000020: The password history must be configured to 24 passwords remembered.
+
+Severity: Medium
+
+Discussion: Without enforcing password history, users may cycle between two or three passwords, negating the intent of regular password changes. Configuring history to 24 ensures better uniqueness and compliance with DoD requirements.
+
+Fix Text
+
+Configure the policy:
+
+Navigate in Group Policy:
+Computer Configuration > Windows Settings > Security Settings > Account Policies > Password Policy > Enforce password history
+
+Set to: 24 or more
+
+Command-line equivalent:
+
+net accounts /uniquepw:24
+
+Manual Command Fix
+# Enforce 24 password history
+net accounts /uniquepw:24
+
+# Verify
+net accounts
+
+
+Rollback (lowering value is insecure, not recommended):
+
+net accounts /uniquepw:0
+
+PowerShell Script (Check / Remediate / Rollback)
+
+Save as Set-WN10-AC-000020.ps1
+
+
+_________________________________________________
+
+<#
+.SYNOPSIS
+  Enforce DISA STIG WN10-AC-000020 (Password history must be 24 remembered).
+
+.DESCRIPTION
+  Ensures Windows password history is configured to remember at least 24 previous passwords.
+  Uses 'net accounts' command (no direct registry key exists).
+  Backup stores the current setting for rollback.
+
+.NOTES
+  Author          : Peter Kure
+  LinkedIn        : linkedin.com/in/peter-kure
+  Github          : github.com/pkure
+  Date Created    : 9/3/2025
+  Last Modified   : 9/3/2025
+  Version         : 1.0
+  CVEs            : n/a
+  Plugin IDs      : n/a
+  STIG-ID         : WN10-AC-000020
+
+.PARAMETER Action
+  "Check"     - Display current password history setting
+  "Remediate" - Apply STIG-compliant value (24)
+  "Rollback"  - Restore from backup if available
+
+.EXAMPLE
+  .\Set-WN10-AC-000020.ps1 -Action Check
+#>
+
+param(
+    [Parameter(Mandatory=$true)]
+    [ValidateSet("Check","Remediate","Rollback")]
+    [string]$Action
+)
+
+$BackupFile = "$env:SystemDrive\STIG-Backup-WN10-AC-000020.txt"
+
+switch ($Action) {
+    "Check" {
+        $current = (net accounts | findstr /C:"Password history length")
+        Write-Output "Current setting: $current"
+    }
+
+    "Remediate" {
+        # Backup current setting
+        net accounts | findstr /C:"Password history length" > $BackupFile
+        Write-Output "Backup saved to $BackupFile"
+
+        # Apply compliant value
+        net accounts /uniquepw:24
+        Write-Output "Remediation applied: Password history set to 24"
+    }
+
+    "Rollback" {
+        if (Test-Path $BackupFile) {
+            $backup = Get-Content $BackupFile
+            if ($backup -match "\d+") {
+                $oldValue = [int]($backup -replace "\D+","")
+                net accounts /uniquepw:$oldValue
+                Write-Output "Rolled back: Password history restored to $oldValue"
+            } else {
+                Write-Output "Backup file found but value could not be parsed."
+            }
+        } else {
+            Write-Output "No backup file found for rollback."
+        }
+    }
+}
+
+_________________________________________________
+
+Example Usage
+
+Check current setting
+
+.\Set-WN10-AC-000020.ps1 -Action Check
+
+
+Remediate (set to 24 remembered passwords)
+
+.\Set-WN10-AC-000020.ps1 -Action Remediate
+
+
+Rollback (restore backup)
+
+.\Set-WN10-AC-000020.ps1 -Action Rollback
+
+One-Liner PowerShell Commands
+
+Check
+
+net accounts | findstr "Password history length"
+
+
+Remediate
+
+net accounts /uniquepw:24
+
+
+Rollback (to insecure state)
+
+net accounts /uniquepw:0
