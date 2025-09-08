@@ -1,0 +1,191 @@
+UBTU-22-654080 — Audit uses of passwd
+
+STIG ID: UBTU-22-654080
+Title: Ubuntu 22.04 LTS must generate audit records for successful/unsuccessful uses of the passwd command.
+Discussion: Changes to local account credentials are high-impact. Every execution of /usr/bin/passwd (success or failure) should generate an audit record tied to the originating user (auid) so investigators can attribute changes.
+
+Check
+
+Verify an audit rule exists that logs execution of /usr/bin/passwd:
+
+# Is auditd running?
+systemctl is-active auditd
+
+# List active rules and look for passwd execution auditing
+sudo auditctl -l | grep -E '(-w[[:space:]]+/usr/bin/passwd[[:space:]]+-p[[:space:]]*x)|(-F[[:space:]]+path=/usr/bin/passwd[[:space:]]+-F[[:space:]]+perm=x)'
+
+
+Compliant examples (either form is fine):
+
+-w /usr/bin/passwd -p x -k UBTU-22-654080
+-a always,exit -F path=/usr/bin/passwd -F perm=x -F auid>=1000 -F auid!=4294967295 -k UBTU-22-654080
+
+
+If no matching rule is present, this is a finding.
+
+Fix (policy)
+
+Create a persistent rule to audit all executions of passwd by human users (UID ≥ 1000), ignoring unset logins (auid = 4294967295):
+
+-a always,exit -F path=/usr/bin/passwd -F perm=x -F auid>=1000 -F auid!=4294967295 -k UBTU-22-654080
+
+
+Place it in /etc/audit/rules.d/stig-UBTU-22-654080.rules, then load:
+
+sudo augenrules --load
+sudo systemctl restart auditd
+
+Rollback
+
+Remove or rename /etc/audit/rules.d/stig-UBTU-22-654080.rules and reload rules:
+
+sudo rm /etc/audit/rules.d/stig-UBTU-22-654080.rules
+sudo augenrules --load
+sudo systemctl restart auditd
+
+Automation Script
+
+Save as UBTU-22-654080.sh:
+
+_______________________________________________________________________
+
+#!/usr/bin/env bash
+# UBTU-22-654080 - Audit successful/unsuccessful uses of the passwd command
+# Usage: sudo ./UBTU-22-654080.sh [check|remediate|rollback]
+
+set -euo pipefail
+
+RULE_KEY="UBTU-22-654080"
+PASSWD_PATH="/usr/bin/passwd"
+
+CONFIG_DIR="/etc/audit/rules.d"
+RULE_FILE="$CONFIG_DIR/stig-${RULE_KEY}.rules"
+BACKUP_DIR="/etc/audit/backup_stigs"
+TS="$(date +%F_%H%M%S)"
+BACKUP_TAR="$BACKUP_DIR/audit_rules_${RULE_KEY}_$TS.tgz"
+
+AUDIT_RULE="-a always,exit -F path=${PASSWD_PATH} -F perm=x -F auid>=1000 -F auid!=4294967295 -k ${RULE_KEY}"
+
+need_root() {
+  if [[ $EUID -ne 0 ]]; then
+    echo "This action requires root. Re-run with: sudo $0 $1" >&2
+    exit 2
+  fi
+}
+
+ensure_auditd() {
+  if ! command -v auditctl >/dev/null 2>&1; then
+    echo "[*] Installing auditd..."
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y auditd audispd-plugins
+  fi
+  systemctl enable --now auditd >/dev/null 2>&1 || true
+}
+
+backup_rules() {
+  mkdir -p "$BACKUP_DIR"
+  tar -czf "$BACKUP_TAR" /etc/audit/audit.rules "$CONFIG_DIR" 2>/dev/null || true
+  echo "[*] Backup created: $BACKUP_TAR"
+}
+
+reload_rules() {
+  # Prefer augenrules (compiles rules.d into /etc/audit/audit.rules)
+  if command -v augenrules >/dev/null 2>&1; then
+    augenrules --load
+  fi
+  systemctl restart auditd || service auditd restart
+}
+
+present_rule() {
+  sudo auditctl -l 2>/dev/null \
+    | grep -E "(-w[[:space:]]+${PASSWD_PATH}[[:space:]]+-p[[:space:]]*x)|(-F[[:space:]]+path=${PASSWD_PATH}[[:space:]]+-F[[:space:]]+perm=x)" \
+    >/dev/null
+}
+
+check() {
+  # auditd active?
+  if ! systemctl is-active --quiet auditd; then
+    echo "FAIL: auditd is not active"
+    exit 1
+  fi
+
+  if present_rule; then
+    echo "PASS: audit rule for ${PASSWD_PATH} execution is loaded"
+    # Show effective rule(s)
+    auditctl -l | grep -E "${PASSWD_PATH}.*( -p x|perm=x)" || true
+    exit 0
+  else
+    echo "FAIL: no audit rule found for ${PASSWD_PATH} execution"
+    exit 1
+  fi
+}
+
+remediate() {
+  need_root remediate
+  ensure_auditd
+  backup_rules
+
+  mkdir -p "$CONFIG_DIR"
+  printf '%s\n' "$AUDIT_RULE" > "$RULE_FILE"
+  echo "[*] Wrote rule to $RULE_FILE:"
+  cat "$RULE_FILE"
+
+  reload_rules
+
+  # Verify loaded
+  if present_rule; then
+    echo "[+] Remediation complete. Rule is active."
+    # Optional quick generate an event (non-invasive):
+    # sudo -u "$SUDO_USER" bash -c 'passwd --help >/dev/null 2>&1 || true'
+    exit 0
+  else
+    echo "[-] Remediation attempted, but rule not detected in auditctl -l"
+    exit 1
+  fi
+}
+
+rollback() {
+  need_root rollback
+  backup_rules
+
+  if [[ -f "$RULE_FILE" ]]; then
+    rm -f "$RULE_FILE"
+    echo "[*] Removed $RULE_FILE"
+  else
+    echo "[*] No rule file to remove at $RULE_FILE"
+  fi
+
+  reload_rules
+
+  if present_rule; then
+    echo "[-] Rollback failed: rule still present"
+    exit 1
+  else
+    echo "[+] Rollback complete. Rule no longer active."
+  fi
+}
+
+case "${1:-}" in
+  check)     check ;;
+  remediate) remediate ;;
+  rollback)  rollback ;;
+  *)
+    echo "Usage: $0 [check|remediate|rollback]"
+    exit 1
+    ;;
+esac
+
+_______________________________________________________________________
+
+
+Usage
+chmod +x UBTU-22-654080.sh
+
+# Check compliance (requires auditd running)
+sudo ./UBTU-22-654080.sh check
+
+# Enforce the rule
+sudo ./UBTU-22-654080.sh remediate
+
+# Roll back (remove the rule)
+sudo ./UBTU-22-654080.sh rollback
