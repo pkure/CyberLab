@@ -53,58 +53,111 @@ ___________________________________________________________________________
 
 #!/usr/bin/env bash
 # UBTU-22-255040 - Disable remote X connections (X11Forwarding)
-# Usage: ./UBTU-22-255040.sh [check|remediate|rollback]
+# Usage: sudo ./UBTU-22-255040.sh [check|remediate|rollback]
 
-CONFIG_FILE="/etc/ssh/sshd_config"
+set -euo pipefail
+
+CONFIG_MAIN="/etc/ssh/sshd_config"
+SNIPPETS_DIR="/etc/ssh/sshd_config.d"
 BACKUP_DIR="/etc/ssh/backup_stigs"
-BACKUP_FILE="$BACKUP_DIR/sshd_config.$(date +%F_%H%M%S)"
+TS="$(date +%F_%H%M%S)"
+BACKUP_TAR="$BACKUP_DIR/sshd_backup_$TS.tgz"
 
-mkdir -p "$BACKUP_DIR"
+need_root() {
+  if [[ $EUID -ne 0 ]]; then
+    echo "This action requires root. Re-run with: sudo $0 $1" >&2
+    exit 2
+  fi
+}
 
 check() {
-    if grep -q "^X11Forwarding no" "$CONFIG_FILE"; then
-        echo "PASS: X11Forwarding is disabled"
-        exit 0
-    else
-        echo "FAIL: X11Forwarding is not properly disabled"
-        exit 1
-    fi
+  if sshd -T 2>/dev/null | grep -qi '^x11forwarding no$'; then
+    echo "PASS: Effective X11Forwarding is 'no'"
+    exit 0
+  else
+    current="$(sshd -T 2>/dev/null | awk '/^x11forwarding /{print $2}')"
+    current="${current:-unknown}"
+    echo "FAIL: Effective X11Forwarding is '$current' (expected 'no')"
+    grep -RinE '^[[:space:]]*#?[[:space:]]*X11Forwarding[[:space:]]+' "$CONFIG_MAIN" "$SNIPPETS_DIR" 2>/dev/null || true
+    exit 1
+  fi
+}
+
+backup_all() {
+  mkdir -p "$BACKUP_DIR"
+  tar -czf "$BACKUP_TAR" \
+    --ignore-failed-read \
+    "$CONFIG_MAIN" "$SNIPPETS_DIR" 2>/dev/null || true
+  echo "[*] Backup created: $BACKUP_TAR"
 }
 
 remediate() {
-    echo "[*] Backing up to $BACKUP_FILE"
-    cp "$CONFIG_FILE" "$BACKUP_FILE"
+  need_root remediate
+  backup_all
 
-    if grep -q "^X11Forwarding" "$CONFIG_FILE"; then
-        sed -i 's/^X11Forwarding.*/X11Forwarding no/' "$CONFIG_FILE"
-    else
-        echo "X11Forwarding no" >> "$CONFIG_FILE"
-    fi
+  # Fix in main config
+  if grep -Ei '^[[:space:]]*#?[[:space:]]*X11Forwarding[[:space:]]+' "$CONFIG_MAIN" >/dev/null; then
+    sed -Ei 's/^[[:space:]]*#?[[:space:]]*X11Forwarding[[:space:]]+.*/X11Forwarding no/' "$CONFIG_MAIN"
+  else
+    echo "X11Forwarding no" >> "$CONFIG_MAIN"
+  fi
 
-    systemctl restart sshd
-    echo "[+] Remediation complete. SSH restarted."
+  # Fix in snippets
+  if [[ -d "$SNIPPETS_DIR" ]]; then
+    sed -Ei 's/^[[:space:]]*#?[[:space:]]*X11Forwarding[[:space:]]+.*/X11Forwarding no/' "$SNIPPETS_DIR"/*.conf 2>/dev/null || true
+  fi
+
+  # Validate config
+  if ! sshd -t 2>/dev/null; then
+    echo "[-] sshd config test failed. Restoring backup..."
+    rollback
+    exit 1
+  fi
+
+  # Restart SSH
+  if systemctl list-unit-files | grep -q '^ssh\.service'; then
+    systemctl restart ssh
+  else
+    systemctl restart sshd || service ssh restart || service sshd restart
+  fi
+
+  echo "[+] Remediation complete. Verifying..."
+  check
 }
 
 rollback() {
-    LATEST_BACKUP=$(ls -t $BACKUP_DIR/sshd_config.* 2>/dev/null | head -n1)
-    if [[ -f "$LATEST_BACKUP" ]]; then
-        echo "[*] Restoring from $LATEST_BACKUP"
-        cp "$LATEST_BACKUP" "$CONFIG_FILE"
-        systemctl restart sshd
-        echo "[+] Rollback complete."
-    else
-        echo "[-] No backup found to rollback."
-        exit 1
-    fi
+  need_root rollback
+  latest="$(ls -t "$BACKUP_DIR"/sshd_backup_*.tgz 2>/dev/null | head -n1 || true)"
+  if [[ -z "$latest" ]]; then
+    echo "[-] No backup archives found in $BACKUP_DIR"
+    exit 1
+  fi
+  echo "[*] Restoring from $latest"
+  tar -xzf "$latest" -C / || { echo "[-] Restore failed"; exit 1; }
+
+  if ! sshd -t 2>/dev/null; then
+    echo "[-] Restored config is invalid. Please inspect manually."
+    exit 1
+  fi
+
+  if systemctl list-unit-files | grep -q '^ssh\.service'; then
+    systemctl restart ssh
+  else
+    systemctl restart sshd || service ssh restart || service sshd restart
+  fi
+
+  echo "[+] Rollback complete."
 }
 
-case "$1" in
-    check) check ;;
-    remediate) remediate ;;
-    rollback) rollback ;;
-    *) echo "Usage: $0 [check|remediate|rollback]"; exit 1 ;;
+case "${1:-}" in
+  check)     check ;;
+  remediate) remediate ;;
+  rollback)  rollback ;;
+  *)
+    echo "Usage: $0 [check|remediate|rollback]"
+    exit 1
+    ;;
 esac
-
 
 ___________________________________________________________________________
 
