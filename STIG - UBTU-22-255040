@@ -48,6 +48,9 @@ Automation Script
 
 Here’s a Bash script to enforce this setting, check compliance, and support rollback:
 
+
+___________________________________________________________________________
+
 #!/usr/bin/env bash
 # UBTU-22-255040 - Disable remote X connections (X11Forwarding)
 # Usage: ./UBTU-22-255040.sh [check|remediate|rollback]
@@ -101,3 +104,20 @@ case "$1" in
     rollback) rollback ;;
     *) echo "Usage: $0 [check|remediate|rollback]"; exit 1 ;;
 esac
+
+
+___________________________________________________________________________
+
+
+
+# Make script executable
+chmod +x UBTU-22-255040.sh
+
+# Check current compliance state
+sudo ./UBTU-22-255040.sh check
+
+# Remediate (disable remote X connections and restart sshd)
+sudo ./UBTU-22-255040.sh remediate
+
+# Rollback to the most recent backup
+sudo ./UBTU-22-255040.sh rollback
