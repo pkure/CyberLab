@@ -49,6 +49,8 @@ Automation Script
 Here’s a Bash script to enforce this setting, check compliance, and support rollback:
 
 
+Save as UBTU-22-255040.sh:
+
 ___________________________________________________________________________
 
 #!/usr/bin/env bash
