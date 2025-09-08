@@ -1,0 +1,103 @@
+UBTU-22-255040 — Disable Remote X Connections
+
+STIG ID: UBTU-22-255040
+Title: Ubuntu 22.04 LTS must be configured so that remote X connections are disabled, unless to fulfill documented and validated mission requirements.
+Discussion: Allowing remote X11 connections (e.g., via SSH forwarding) can expose the system to keylogging, screen scraping, or privilege escalation. Unless explicitly required and documented, remote X access must be disabled.
+
+Check
+
+Run the following command to verify the setting:
+
+sudo grep -i "X11Forwarding" /etc/ssh/sshd_config /etc/ssh/sshd_config.d/* 2>/dev/null
+
+
+Expected result:
+
+X11Forwarding no
+
+
+If the value is set to yes or commented out (default is often yes), this is a finding.
+
+Fix
+
+Create a backup, then update the SSH configuration:
+
+# Backup existing config
+sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak.$(date +%F)
+
+# Ensure X11Forwarding is disabled
+sudo sed -i 's/^[#]*X11Forwarding.*/X11Forwarding no/' /etc/ssh/sshd_config
+
+# Restart SSH to apply
+sudo systemctl restart sshd
+
+Rollback
+
+If required to restore the previous state:
+
+# Restore backup
+sudo cp /etc/ssh/sshd_config.bak.YYYY-MM-DD /etc/ssh/sshd_config
+
+# Restart SSH
+sudo systemctl restart sshd
+
+
+(Replace YYYY-MM-DD with the actual date of the backup file.)
+
+Automation Script
+
+Here’s a Bash script to enforce this setting, check compliance, and support rollback:
+
+#!/usr/bin/env bash
+# UBTU-22-255040 - Disable remote X connections (X11Forwarding)
+# Usage: ./UBTU-22-255040.sh [check|remediate|rollback]
+
+CONFIG_FILE="/etc/ssh/sshd_config"
+BACKUP_DIR="/etc/ssh/backup_stigs"
+BACKUP_FILE="$BACKUP_DIR/sshd_config.$(date +%F_%H%M%S)"
+
+mkdir -p "$BACKUP_DIR"
+
+check() {
+    if grep -q "^X11Forwarding no" "$CONFIG_FILE"; then
+        echo "PASS: X11Forwarding is disabled"
+        exit 0
+    else
+        echo "FAIL: X11Forwarding is not properly disabled"
+        exit 1
+    fi
+}
+
+remediate() {
+    echo "[*] Backing up to $BACKUP_FILE"
+    cp "$CONFIG_FILE" "$BACKUP_FILE"
+
+    if grep -q "^X11Forwarding" "$CONFIG_FILE"; then
+        sed -i 's/^X11Forwarding.*/X11Forwarding no/' "$CONFIG_FILE"
+    else
+        echo "X11Forwarding no" >> "$CONFIG_FILE"
+    fi
+
+    systemctl restart sshd
+    echo "[+] Remediation complete. SSH restarted."
+}
+
+rollback() {
+    LATEST_BACKUP=$(ls -t $BACKUP_DIR/sshd_config.* 2>/dev/null | head -n1)
+    if [[ -f "$LATEST_BACKUP" ]]; then
+        echo "[*] Restoring from $LATEST_BACKUP"
+        cp "$LATEST_BACKUP" "$CONFIG_FILE"
+        systemctl restart sshd
+        echo "[+] Rollback complete."
+    else
+        echo "[-] No backup found to rollback."
+        exit 1
+    fi
+}
+
+case "$1" in
+    check) check ;;
+    remediate) remediate ;;
+    rollback) rollback ;;
+    *) echo "Usage: $0 [check|remediate|rollback]"; exit 1 ;;
+esac
