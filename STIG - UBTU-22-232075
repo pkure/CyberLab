@@ -1,0 +1,182 @@
+UBTU-22-232075 — Library files group-owned by root
+
+STIG ID: UBTU-22-232075
+Why it matters: If libraries aren’t group-owned by root, a non-root group could influence code that privileged processes load. That’s a neat way to brick a box… or worse.
+
+Check
+
+Search common library paths for anything not group-owned by root:
+
+sudo find /lib /lib64 /usr/lib /usr/lib64 \
+  -xdev \( -type f -o -type d -o -type l \) ! -group root 2>/dev/null
+
+
+No output = compliant. Any listed path is a finding.
+
+Tip: quick counts by path:
+
+for d in /lib /lib64 /usr/lib /usr/lib64; do
+  printf "%-12s %s\n" "$d" "$(sudo find "$d" -xdev \( -type f -o -type d -o -type l \) ! -group root 2>/dev/null | wc -l)"
+done
+
+Fix (policy)
+
+Set group owner to root for non-compliant items (files, dirs, symlinks):
+
+# Preview (no change):
+sudo find /lib /lib64 /usr/lib /usr/lib64 -xdev \( -type f -o -type d -o -type l \) ! -group root -print
+
+# Enforce:
+sudo find /lib /lib64 /usr/lib /usr/lib64 -xdev -type l ! -group root -exec chgrp -h root {} +    # symlinks
+sudo find /lib /lib64 /usr/lib /usr/lib64 -xdev \( -type f -o -type d \) ! -group root -exec chgrp root {} +
+
+Rollback
+
+If you need to restore previous group owners, keep a manifest before changes and replay it:
+
+# Example of restoring one path:
+sudo chgrp <previous-group> <path>
+sudo chgrp -h <previous-group> <symlink>
+
+
+(Use the automation script below; it saves a manifest you can roll back from.)
+
+Automation Script
+
+Save as UBTU-22-232075.sh:
+
+
+__________________________________________________________
+
+#!/usr/bin/env bash
+# UBTU-22-232075 - Library files must be group-owned by root
+# Usage: sudo ./UBTU-22-232075.sh [check|remediate|rollback]
+
+set -euo pipefail
+
+RULE_ID="UBTU-22-232075"
+TARGET_GROUP="root"
+LIB_DIRS=(/lib /lib64 /usr/lib /usr/lib64)
+
+BACKUP_DIR="/var/backups/stig/${RULE_ID}"
+TS="$(date +%F_%H%M%S)"
+MANIFEST="${BACKUP_DIR}/manifest_${TS}.csv"   # path,type,gid,group
+LATEST_LINK="${BACKUP_DIR}/latest.csv"
+
+need_root() {
+  if [[ $EUID -ne 0 ]]; then
+    echo "This action requires root. Re-run with: sudo $0 $1" >&2
+    exit 2
+  fi
+}
+
+list_noncompliant() {
+  # List any file/dir/symlink not group-owned by root
+  find "${LIB_DIRS[@]}" -xdev \
+    \( -type f -o -type d -o -type l \) ! -group "${TARGET_GROUP}" 2>/dev/null
+}
+
+check() {
+  local out
+  out="$(list_noncompliant || true)"
+  if [[ -z "$out" ]]; then
+    echo "PASS: All library items in ${LIB_DIRS[*]} are group-owned by ${TARGET_GROUP}"
+    exit 0
+  else
+    echo "FAIL: Found items not group-owned by ${TARGET_GROUP}:"
+    echo "$out"
+    # Show counts per root dir for quick triage
+    echo
+    echo "Counts by directory:"
+    for d in "${LIB_DIRS[@]}"; do
+      printf "  %-12s %5d\n" "$d" "$(find "$d" -xdev \( -type f -o -type d -o -type l \) ! -group "${TARGET_GROUP}" 2>/dev/null | wc -l)"
+    done
+    exit 1
+  fi
+}
+
+backup_manifest() {
+  mkdir -p "${BACKUP_DIR}"
+  # CSV: path,type,gid,group
+  : > "${MANIFEST}"
+  while IFS= read -r -d '' p; do
+    # type: f/d/l ; get current gid and group
+    local t g gid
+    t="$(test -L "$p" && echo l || (test -d "$p" && echo d || echo f))"
+    gid="$(stat -c '%g' "$p" 2>/dev/null || echo -1)"
+    g="$(getent group "$gid" | cut -d: -f1 || true)"
+    printf '%s,%s,%s,%s\n' "$p" "$t" "$gid" "${g:-UNKNOWN}" >> "${MANIFEST}"
+  done < <(list_noncompliant | tr '\n' '\0')
+  ln -sf "$(basename "${MANIFEST}")" "${LATEST_LINK}" || true
+  echo "[*] Manifest saved: ${MANIFEST}"
+}
+
+remediate() {
+  need_root remediate
+  # Build manifest of all items we will change
+  backup_manifest
+
+  # Fix symlinks first (must use -h)
+  find "${LIB_DIRS[@]}" -xdev -type l ! -group "${TARGET_GROUP}" -print0 2>/dev/null \
+    | xargs -0r chgrp -h "${TARGET_GROUP}"
+
+  # Then files and directories
+  find "${LIB_DIRS[@]}" -xdev \( -type f -o -type d \) ! -group "${TARGET_GROUP}" -print0 2>/dev/null \
+    | xargs -0r chgrp "${TARGET_GROUP}"
+
+  echo "[+] Remediation complete. Re-checking..."
+  if check; then
+    exit 0
+  else
+    echo "[-] Some paths remain noncompliant. See above."
+    exit 1
+  fi
+}
+
+rollback() {
+  need_root rollback
+  local mf="${1:-$LATEST_LINK}"
+  if [[ ! -f "${mf}" ]]; then
+    echo "[-] No manifest found at ${mf}. Aborting."
+    exit 1
+  fi
+  echo "[*] Rolling back using manifest: ${mf}"
+  # Read CSV: path,type,gid,group
+  while IFS=',' read -r path typ gid grp; do
+    [[ -e "$path" || -L "$path" ]] || continue
+    if [[ "$typ" == "l" ]]; then
+      chgrp -h "$grp" "$path" 2>/dev/null || true
+    else
+      chgrp "$grp" "$path" 2>/dev/null || true
+    fi
+  done < "${mf}"
+  echo "[+] Rollback complete. Current status:"
+  check || true
+}
+
+case "${1:-}" in
+  check)     check ;;
+  remediate) remediate ;;
+  rollback)  shift; rollback "$@" ;;  # allow: sudo ./script rollback /path/to/manifest.csv
+  *)
+    echo "Usage: $0 [check|remediate|rollback [manifest.csv]]"
+    exit 1
+    ;;
+esac
+
+__________________________________________________________
+
+Usage
+chmod +x UBTU-22-232075.sh
+
+# See if anything’s off
+sudo ./UBTU-22-232075.sh check
+
+# Enforce (writes a manifest under /var/backups/stig/UBTU-22-232075/)
+sudo ./UBTU-22-232075.sh remediate
+
+# If you need to revert:
+#   - with latest manifest
+sudo ./UBTU-22-232075.sh rollback
+#   - or specify a specific manifest file
+sudo ./UBTU-22-232075.sh rollback /var/backups/stig/UBTU-22-232075/manifest_YYYY-MM-DD_HHMMSS.csv
