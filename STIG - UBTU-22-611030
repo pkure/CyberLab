@@ -1,0 +1,142 @@
+UBTU-22-611030 — Prevent dictionary words in passwords
+
+STIG ID: UBTU-22-611030
+Why it matters: Weak passwords based on dictionary words are trivial to crack. PAM can enforce dictionary checks to ensure users pick stronger secrets.
+
+Check
+
+Verify PAM password quality modules are in use:
+
+# Look for pam_pwquality or pam_cracklib in the password stack
+grep -Ei 'pam_(pwquality|cracklib)' /etc/pam.d/common-password
+
+
+Typical compliant line (Ubuntu 22.04 defaults to pam_pwquality):
+
+password requisite pam_pwquality.so retry=3 minlen=14 ucredit=-1 lcredit=-1 dcredit=-1 ocredit=-1 dictcheck=1
+
+
+Also confirm dictionary word checks are enabled:
+
+sudo grep -E 'dictcheck\s*=\s*1' /etc/security/pwquality.conf
+
+
+If dictcheck=0 or missing, this is a finding.
+
+Fix (policy)
+
+Edit /etc/security/pwquality.conf and ensure:
+
+dictcheck = 1
+
+
+Also ensure /etc/pam.d/common-password references pam_pwquality.so:
+
+password requisite pam_pwquality.so retry=3 minlen=14 dictcheck=1
+
+
+Then test with passwd as a non-root user.
+
+Rollback
+
+Remove or comment out the dictcheck directive in /etc/security/pwquality.conf and reload PAM configuration (changes apply immediately for future password changes).
+
+Automation Script
+
+Save as UBTU-22-611030.sh:
+
+____________________________________________________________________
+
+#!/usr/bin/env bash
+# UBTU-22-611030 - Prevent dictionary words for passwords
+# Usage: sudo ./UBTU-22-611030.sh [check|remediate|rollback]
+
+set -euo pipefail
+
+RULE_ID="UBTU-22-611030"
+CONF_FILE="/etc/security/pwquality.conf"
+PAM_FILE="/etc/pam.d/common-password"
+BACKUP_DIR="/etc/security/backup_stigs"
+TS="$(date +%F_%H%M%S)"
+BACKUP_TAR="${BACKUP_DIR}/pwquality_${TS}.tgz"
+
+need_root(){ [[ $EUID -eq 0 ]] || { echo "Run with sudo"; exit 2; }; }
+
+backup_all(){
+  mkdir -p "$BACKUP_DIR"
+  tar -czf "$BACKUP_TAR" "$CONF_FILE" "$PAM_FILE" 2>/dev/null || true
+  echo "[*] Backup saved: $BACKUP_TAR"
+}
+
+check(){
+  local conf pam
+  conf=$(grep -E '^\s*dictcheck\s*=\s*1' "$CONF_FILE" 2>/dev/null || true)
+  pam=$(grep -E 'pam_pwquality\.so.*dictcheck=1' "$PAM_FILE" 2>/dev/null || true)
+
+  if [[ -n "$conf" && -n "$pam" ]]; then
+    echo "PASS: Dictionary word prevention enabled (pwquality + PAM)"
+    exit 0
+  else
+    echo "FAIL: Missing dictcheck=1 (conf or PAM)."
+    echo " pwquality.conf:"
+    grep -E 'dictcheck' "$CONF_FILE" 2>/dev/null || echo " none"
+    echo " common-password:"
+    grep -E 'pam_pwquality' "$PAM_FILE" 2>/dev/null || echo " none"
+    exit 1
+  fi
+}
+
+remediate(){
+  need_root
+  backup_all
+
+  # Ensure dictcheck=1 in pwquality.conf
+  if grep -qE '^\s*dictcheck' "$CONF_FILE" 2>/dev/null; then
+    sed -i 's/^\s*dictcheck\s*=.*/dictcheck = 1/' "$CONF_FILE"
+  else
+    echo "dictcheck = 1" >> "$CONF_FILE"
+  fi
+
+  # Ensure PAM file contains pam_pwquality with dictcheck=1
+  if grep -q 'pam_pwquality.so' "$PAM_FILE"; then
+    sed -i -E 's/(pam_pwquality\.so.*)(dictcheck=[0-9])?/\1 dictcheck=1/' "$PAM_FILE"
+  else
+    echo 'password requisite pam_pwquality.so retry=3 minlen=14 dictcheck=1' >> "$PAM_FILE"
+  fi
+
+  echo "[+] Remediation applied. Re-check:"
+  check
+}
+
+rollback(){
+  need_root
+  backup_all
+  local latest
+  latest="$(ls -t "$BACKUP_DIR"/pwquality_*.tgz 2>/dev/null | head -n1 || true)"
+  [[ -z "$latest" ]] && { echo "[-] No backup found"; exit 1; }
+  echo "[*] Restoring from $latest"
+  tar -xzf "$latest" -C / || { echo "[-] Restore failed"; exit 1; }
+  echo "[+] Rollback complete."
+}
+
+case "${1:-}" in
+  check) check ;;
+  remediate) remediate ;;
+  rollback) rollback ;;
+  *) echo "Usage: $0 [check|remediate|rollback]"; exit 1 ;;
+esac
+
+
+____________________________________________________________________
+
+Usage
+chmod +x UBTU-22-611030.sh
+
+# Check compliance
+sudo ./UBTU-22-611030.sh check
+
+# Enforce STIG settings
+sudo ./UBTU-22-611030.sh remediate
+
+# Roll back (restore last backup)
+sudo ./UBTU-22-611030.sh rollback
