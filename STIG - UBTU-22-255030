@@ -1,0 +1,143 @@
+UBTU-22-255030 — SSH idle/unresponsive session termination
+
+STIG ID: UBTU-22-255030
+Title: Ubuntu 22.04 LTS must be configured so that all network connections associated with SSH traffic terminate after becoming unresponsive.
+Why it matters: Idle SSH sessions consume resources and create a risk of hijack if left unattended. Configuring timeouts ensures abandoned sessions are dropped.
+
+Check
+
+Verify the following settings in /etc/ssh/sshd_config (or drop-in configs under /etc/ssh/sshd_config.d/):
+
+sudo grep -iE 'ClientAliveInterval|ClientAliveCountMax' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/* 2>/dev/null
+
+
+Expected values:
+
+ClientAliveInterval 300
+ClientAliveCountMax 0
+
+
+This means: after 300 seconds (5 min) of inactivity, with 0 retries, the session terminates.
+
+If ClientAliveInterval is unset or too high, or if ClientAliveCountMax > 0, this is a finding.
+
+Fix (policy)
+
+Edit /etc/ssh/sshd_config (or a snippet in /etc/ssh/sshd_config.d/) and set:
+
+ClientAliveInterval 300
+ClientAliveCountMax 0
+
+
+Then restart the SSH service:
+
+sudo systemctl restart ssh
+
+Rollback
+
+Restore the original sshd_config from backup and restart the service:
+
+sudo cp /etc/ssh/sshd_config.bak.YYYY-MM-DD /etc/ssh/sshd_config
+sudo systemctl restart ssh
+
+Automation Script
+
+Save as UBTU-22-255030.sh:
+
+#!/usr/bin/env bash
+# UBTU-22-255030 - SSH idle/unresponsive session termination
+# Usage: sudo ./UBTU-22-255030.sh [check|remediate|rollback]
+
+set -euo pipefail
+
+CONFIG_MAIN="/etc/ssh/sshd_config"
+SNIPPETS_DIR="/etc/ssh/sshd_config.d"
+BACKUP_DIR="/etc/ssh/backup_stigs"
+TS="$(date +%F_%H%M%S)"
+BACKUP_FILE="$BACKUP_DIR/sshd_config_UBTU-22-255030_$TS.bak"
+
+need_root() {
+  if [[ $EUID -ne 0 ]]; then
+    echo "This action requires root. Re-run with: sudo $0 $1" >&2
+    exit 2
+  fi
+}
+
+backup() {
+  mkdir -p "$BACKUP_DIR"
+  cp "$CONFIG_MAIN" "$BACKUP_FILE"
+  echo "[*] Backup created: $BACKUP_FILE"
+}
+
+reload_sshd() {
+  if ! sshd -t 2>/dev/null; then
+    echo "[-] sshd config test failed"
+    exit 1
+  fi
+  systemctl restart ssh || systemctl restart sshd || service ssh restart
+}
+
+check() {
+  local interval count
+  interval=$(sshd -T | awk '/^clientaliveinterval/{print $2}')
+  count=$(sshd -T | awk '/^clientalivecountmax/{print $2}')
+  echo "ClientAliveInterval = ${interval:-unset}"
+  echo "ClientAliveCountMax = ${count:-unset}"
+  if [[ "$interval" == "300" && "$count" == "0" ]]; then
+    echo "PASS: SSH idle timeout is compliant"
+    exit 0
+  else
+    echo "FAIL: SSH idle timeout not compliant"
+    exit 1
+  fi
+}
+
+remediate() {
+  need_root remediate
+  backup
+
+  # Normalize settings in main config
+  sed -i -E '/^\s*#?\s*ClientAliveInterval\s+/d' "$CONFIG_MAIN"
+  sed -i -E '/^\s*#?\s*ClientAliveCountMax\s+/d' "$CONFIG_MAIN"
+
+  {
+    echo "ClientAliveInterval 300"
+    echo "ClientAliveCountMax 0"
+  } >> "$CONFIG_MAIN"
+
+  reload_sshd
+  echo "[+] Remediation complete."
+  check
+}
+
+rollback() {
+  need_root rollback
+  latest=$(ls -t "$BACKUP_DIR"/sshd_config_UBTU-22-255030_*.bak 2>/dev/null | head -n1 || true)
+  if [[ -z "$latest" ]]; then
+    echo "[-] No backup found in $BACKUP_DIR"
+    exit 1
+  fi
+  echo "[*] Restoring from $latest"
+  cp "$latest" "$CONFIG_MAIN"
+  reload_sshd
+  echo "[+] Rollback complete."
+}
+
+case "${1:-}" in
+  check) check ;;
+  remediate) remediate ;;
+  rollback) rollback ;;
+  *) echo "Usage: $0 [check|remediate|rollback]"; exit 1 ;;
+esac
+
+Usage
+chmod +x UBTU-22-255030.sh
+
+# Check current state
+sudo ./UBTU-22-255030.sh check
+
+# Enforce STIG values
+sudo ./UBTU-22-255030.sh remediate
+
+# Roll back to most recent backup
+sudo ./UBTU-22-255030.sh rollback
