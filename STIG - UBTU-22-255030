@@ -44,6 +44,10 @@ Automation Script
 
 Save as UBTU-22-255030.sh:
 
+
+__________________________________________________________________________
+
+
 #!/usr/bin/env bash
 # UBTU-22-255030 - SSH idle/unresponsive session termination
 # Usage: sudo ./UBTU-22-255030.sh [check|remediate|rollback]
@@ -52,9 +56,11 @@ set -euo pipefail
 
 CONFIG_MAIN="/etc/ssh/sshd_config"
 SNIPPETS_DIR="/etc/ssh/sshd_config.d"
+STIG_SNIPPET="${SNIPPETS_DIR}/99-stig-idle-timeout.conf"
+
 BACKUP_DIR="/etc/ssh/backup_stigs"
 TS="$(date +%F_%H%M%S)"
-BACKUP_FILE="$BACKUP_DIR/sshd_config_UBTU-22-255030_$TS.bak"
+BACKUP_TAR="${BACKUP_DIR}/ssh_UBTU-22-255030_${TS}.tgz"
 
 need_root() {
   if [[ $EUID -ne 0 ]]; then
@@ -63,72 +69,100 @@ need_root() {
   fi
 }
 
-backup() {
-  mkdir -p "$BACKUP_DIR"
-  cp "$CONFIG_MAIN" "$BACKUP_FILE"
-  echo "[*] Backup created: $BACKUP_FILE"
-}
-
 reload_sshd() {
   if ! sshd -t 2>/dev/null; then
-    echo "[-] sshd config test failed"
-    exit 1
+    echo "[-] sshd config test failed" >&2
+    return 1
   fi
   systemctl restart ssh || systemctl restart sshd || service ssh restart
 }
 
-check() {
+backup_all() {
+  mkdir -p "$BACKUP_DIR"
+  tar -czf "$BACKUP_TAR" \
+    --ignore-failed-read \
+    "$CONFIG_MAIN" "$SNIPPETS_DIR" 2>/dev/null || true
+  echo "[*] Backup created: $BACKUP_TAR"
+}
+
+show_effective() {
   local interval count
-  interval=$(sshd -T | awk '/^clientaliveinterval/{print $2}')
-  count=$(sshd -T | awk '/^clientalivecountmax/{print $2}')
+  interval="$(sshd -T | awk '/^clientaliveinterval/{print $2}')"
+  count="$(sshd -T | awk '/^clientalivecountmax/{print $2}')"
   echo "ClientAliveInterval = ${interval:-unset}"
   echo "ClientAliveCountMax = ${count:-unset}"
-  if [[ "$interval" == "300" && "$count" == "0" ]]; then
+  [[ "$interval" == "300" && "$count" == "0" ]]
+}
+
+check() {
+  if show_effective; then
     echo "PASS: SSH idle timeout is compliant"
     exit 0
   else
     echo "FAIL: SSH idle timeout not compliant"
+    # Show where values are set
+    grep -RinE '^\s*#?\s*ClientAlive(Interval|CountMax)\s+' "$CONFIG_MAIN" "$SNIPPETS_DIR" 2>/dev/null || true
     exit 1
   fi
 }
 
 remediate() {
   need_root remediate
-  backup
+  backup_all
+  mkdir -p "$SNIPPETS_DIR"
 
-  # Normalize settings in main config
-  sed -i -E '/^\s*#?\s*ClientAliveInterval\s+/d' "$CONFIG_MAIN"
-  sed -i -E '/^\s*#?\s*ClientAliveCountMax\s+/d' "$CONFIG_MAIN"
+  # Remove any existing ClientAlive* lines from main and snippets
+  sed -Ei '/^[[:space:]]*#?[[:space:]]*ClientAlive(Interval|CountMax)[[:space:]]+/d' "$CONFIG_MAIN" || true
+  if compgen -G "$SNIPPETS_DIR/*.conf" >/dev/null; then
+    sed -Ei '/^[[:space:]]*#?[[:space:]]*ClientAlive(Interval|CountMax)[[:space:]]+/d' "$SNIPPETS_DIR"/*.conf || true
+  fi
 
-  {
-    echo "ClientAliveInterval 300"
-    echo "ClientAliveCountMax 0"
-  } >> "$CONFIG_MAIN"
+  # Write a dedicated STIG snippet that sets the required values
+  cat > "$STIG_SNIPPET" <<'EOF'
+# Enforced by STIG UBTU-22-255030
+ClientAliveInterval 300
+ClientAliveCountMax 0
+EOF
 
-  reload_sshd
+  if ! reload_sshd; then
+    echo "[-] Reload failed. Restoring backup..." >&2
+    rollback
+    exit 1
+  fi
+
   echo "[+] Remediation complete."
-  check
+  if show_effective; then
+    echo "PASS: SSH idle timeout is now compliant"
+  else
+    echo "WARN: Effective values still not compliant; investigate include order and local overrides."
+    exit 1
+  fi
 }
 
 rollback() {
   need_root rollback
-  latest=$(ls -t "$BACKUP_DIR"/sshd_config_UBTU-22-255030_*.bak 2>/dev/null | head -n1 || true)
+  local latest
+  latest="$(ls -t "$BACKUP_DIR"/ssh_UBTU-22-255030_*.tgz 2>/dev/null | head -n1 || true)"
   if [[ -z "$latest" ]]; then
-    echo "[-] No backup found in $BACKUP_DIR"
+    echo "[-] No backup archives found in $BACKUP_DIR"
     exit 1
   fi
   echo "[*] Restoring from $latest"
-  cp "$latest" "$CONFIG_MAIN"
+  tar -xzf "$latest" -C / || { echo "[-] Restore failed"; exit 1; }
   reload_sshd
   echo "[+] Rollback complete."
 }
 
 case "${1:-}" in
-  check) check ;;
-  remediate) remediate ;;
-  rollback) rollback ;;
+  check)      check ;;
+  remediate)  remediate ;;
+  rollback)   rollback ;;
   *) echo "Usage: $0 [check|remediate|rollback]"; exit 1 ;;
 esac
+
+
+__________________________________________________________________________
+
 
 Usage
 chmod +x UBTU-22-255030.sh
