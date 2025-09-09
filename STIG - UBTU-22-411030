@@ -1,0 +1,170 @@
+UBTU-22-411030 — 60-day maximum password lifetime
+
+STIG ID: UBTU-22-411030
+Why it matters: Long-lived passwords increase blast radius. Hard-capping to 60 days limits window of abuse and forces periodic rotation.
+
+What “compliant” looks like
+
+/etc/login.defs has PASS_MAX_DAYS 60 (sets default for new users).
+
+All human accounts (UID ≥ 1000, real shells) have max age ≤ 60 (field 5 in /etc/shadow, or via chage -l).
+
+Check
+# Default for new users
+grep -E '^[[:space:]]*PASS_MAX_DAYS[[:space:]]+60([[:space:]]|$)' /etc/login.defs || echo "NOT SET"
+
+# Current users (UID>=1000, real shells), list anyone >60 or unlimited (-1)
+awk -F: '($3>=1000)&&($7~/(bash|zsh|sh|fish)$/){print $1}' /etc/passwd \
+| while read -r u; do
+    max=$(chage -l "$u" | awk -F': ' '/Maximum number of days between password change/{print $2}')
+    if [[ "$max" == "never" || "$max" == "" ]]; then echo "$u: unlimited"; 
+    elif [[ "$max" -gt 60 ]]; then echo "$u: $max"; fi
+  done
+
+
+No output from the second block = compliant.
+
+Fix (policy)
+
+Set default for new users:
+
+PASS_MAX_DAYS 60
+
+
+in /etc/login.defs.
+
+For existing human users:
+
+# Adjust everyone with UID>=1000 and a real shell
+awk -F: '($3>=1000)&&($7~/(bash|zsh|sh|fish)$/){print $1}' /etc/passwd \
+| xargs -r -n1 sudo chage -M 60
+
+Rollback
+
+Restore /etc/login.defs and /etc/shadow from a backup you took pre-change (the script below auto-backs these up).
+
+Automation Script
+
+Save as UBTU-22-411030.sh:
+
+
+________________________________________________________________________
+
+#!/usr/bin/env bash
+# UBTU-22-411030 - Enforce 60-day maximum password lifetime
+# Usage: sudo ./UBTU-22-411030.sh [check|remediate|rollback]
+
+set -euo pipefail
+
+RULE_ID="UBTU-22-411030"
+LOGIN_DEFS="/etc/login.defs"
+SHADOW="/etc/shadow"
+PASSWD="/etc/passwd"
+
+BACKUP_DIR="/var/backups/stig/${RULE_ID}"
+TS="$(date +%F_%H%M%S)"
+BACKUP_TAR="${BACKUP_DIR}/login_shadow_${TS}.tgz"
+
+need_root(){ [[ $EUID -eq 0 ]] || { echo "Use sudo"; exit 2; }; }
+
+humans(){
+  # UID >= 1000 and a real shell (bash|zsh|sh|fish)
+  awk -F: '($3>=1000)&&($7~/(bash|zsh|sh|fish)$/){print $1}' "$PASSWD"
+}
+
+login_defs_ok(){
+  grep -Eq '^[[:space:]]*PASS_MAX_DAYS[[:space:]]+60([[:space:]]|$)' "$LOGIN_DEFS"
+}
+
+who_is_noncompliant(){
+  humans | while read -r u; do
+    max_days="$(chage -l "$u" | awk -F': ' '/Maximum number of days between password change/{print $2}')"
+    # Interpret "never" or empty as unlimited
+    if [[ -z "${max_days}" || "${max_days}" == "never" ]]; then
+      echo "$u: unlimited"
+    elif [[ "$max_days" =~ ^[0-9]+$ ]] && (( max_days > 60 )); then
+      echo "$u: $max_days"
+    fi
+  done
+}
+
+backup_all(){
+  mkdir -p "$BACKUP_DIR"
+  tar -czf "$BACKUP_TAR" "$LOGIN_DEFS" "$SHADOW" "$PASSWD" 2>/dev/null || true
+  echo "[*] Backup saved: $BACKUP_TAR"
+}
+
+check(){
+  local bad=""
+  if login_defs_ok; then
+    echo "PASS: PASS_MAX_DAYS 60 set in $LOGIN_DEFS"
+  else
+    echo "FAIL: PASS_MAX_DAYS not 60 in $LOGIN_DEFS"
+    bad="1"
+  fi
+
+  echo "Checking existing human users (UID>=1000, real shells) exceeding 60 days:"
+  offenders="$(who_is_noncompliant || true)"
+  if [[ -n "$offenders" ]]; then
+    echo "$offenders"
+    bad="1"
+  else
+    echo "None"
+  fi
+
+  [[ -z "$bad" ]] && exit 0 || exit 1
+}
+
+remediate(){
+  need_root
+  backup_all
+
+  # 1) Normalize PASS_MAX_DAYS in login.defs
+  if grep -Eq '^[[:space:]]*PASS_MAX_DAYS' "$LOGIN_DEFS"; then
+    sed -i -E 's/^[[:space:]]*PASS_MAX_DAYS[[:space:]]+.*/PASS_MAX_DAYS   60/' "$LOGIN_DEFS"
+  else
+    printf '\nPASS_MAX_DAYS   60\n' >> "$LOGIN_DEFS"
+  fi
+
+  # 2) Set existing human users to 60
+  to_fix="$(who_is_noncompliant || true)"
+  if [[ -n "$to_fix" ]]; then
+    echo "$to_fix" | cut -d: -f1 | xargs -r -n1 chage -M 60
+  fi
+
+  echo "[+] Remediation complete. Re-checking..."
+  check
+}
+
+rollback(){
+  need_root
+  local latest
+  latest="$(ls -t "$BACKUP_DIR"/login_shadow_*.tgz 2>/dev/null | head -n1 || true)"
+  [[ -z "$latest" ]] && { echo "[-] No backup found in $BACKUP_DIR"; exit 1; }
+  echo "[*] Restoring from $latest"
+  tar -xzf "$latest" -C / || { echo "[-] Restore failed"; exit 1; }
+  echo "[+] Rollback complete."
+  check || true
+}
+
+case "${1:-}" in
+  check)      check ;;
+  remediate)  remediate ;;
+  rollback)   rollback ;;
+  *) echo "Usage: $0 [check|remediate|rollback]"; exit 1 ;;
+esac
+
+________________________________________________________________________
+
+
+Usage
+chmod +x UBTU-22-411030.sh
+
+# See current state
+sudo ./UBTU-22-411030.sh check
+
+# Enforce for both defaults + existing users
+sudo ./UBTU-22-411030.sh remediate
+
+# Roll back to most recent backup
+sudo ./UBTU-22-411030.sh rollback
